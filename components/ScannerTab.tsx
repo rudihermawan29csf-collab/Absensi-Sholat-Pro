@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { UserCheck, Search, Sparkles, Zap, Droplets, Loader2, Trash2, CheckSquare, Check, Filter } from 'lucide-react';
+import { UserCheck, Search, Sparkles, Zap, Droplets, Loader2, Trash2, CheckSquare, Check, Filter, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { Student, AttendanceRecord, UserRole } from '../types';
 import { addAttendanceRecordToSheet, deleteAttendanceRecord } from '../services/storageService';
 
@@ -20,6 +20,8 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
   const [manualClassFilter, setManualClassFilter] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isHaidMode, setIsHaidMode] = useState(false);
+  const [showAttended, setShowAttended] = useState(false); // Default: Sembunyikan yang sudah absen
+  
   const [lastMessage, setLastMessage] = useState<{ text: string; type: 'success' | 'error'; student?: Student } | null>(null);
 
   const uniqueClasses = useMemo(() => {
@@ -44,13 +46,17 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
 
   const filteredStudents = useMemo(() => {
     return students.filter(s => {
+      // LOGIKA BARU: Sembunyikan jika sudah absen, kecuali tombol 'showAttended' aktif
+      const isAttended = todayAttendanceMap.has(s.id);
+      if (!showAttended && isAttended) return false;
+
       if (isHaidMode && s.gender !== 'P') return false;
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             s.id.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesClass = manualClassFilter === 'ALL' || s.className === manualClassFilter;
       return matchesSearch && matchesClass;
     });
-  }, [students, searchQuery, manualClassFilter, todayAttendanceMap, isHaidMode]);
+  }, [students, searchQuery, manualClassFilter, todayAttendanceMap, isHaidMode, showAttended]);
 
   const handleAttendance = async (student: Student) => {
     setIsProcessing(true);
@@ -134,6 +140,14 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
 
+  // Menghitung jumlah yang belum absen untuk UI
+  const remainingCount = useMemo(() => {
+    if (manualClassFilter === 'ALL') return students.length - todayAttendanceMap.size;
+    const classStudents = students.filter(s => s.className === manualClassFilter);
+    const classAttended = classStudents.filter(s => todayAttendanceMap.has(s.id)).length;
+    return classStudents.length - classAttended;
+  }, [students, todayAttendanceMap, manualClassFilter]);
+
   return (
     <div className="space-y-4 pb-20">
       {/* Title Header */}
@@ -141,10 +155,16 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
         <h2 className="text-xl font-bold text-amber-400 font-gaming flex items-center gap-2">
            <UserCheck className="text-cyan-400" /> ABSENSI MANUAL
         </h2>
-        <button onClick={() => setAutoSendWA(!autoSendWA)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border flex items-center gap-2 transition-all ${autoSendWA ? 'bg-green-600/20 border-green-500 text-green-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
-             <div className={`w-1.5 h-1.5 rounded-full ${autoSendWA ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`}></div>
-             WA {autoSendWA ? 'ON' : 'OFF'}
-        </button>
+        <div className="flex gap-2">
+            <button onClick={() => setShowAttended(!showAttended)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border flex items-center gap-2 transition-all ${showAttended ? 'bg-amber-600/20 border-amber-500 text-amber-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                {showAttended ? <Eye size={14} /> : <EyeOff size={14} />}
+                {showAttended ? 'Hide Done' : 'Show Done'}
+            </button>
+            <button onClick={() => setAutoSendWA(!autoSendWA)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border flex items-center gap-2 transition-all ${autoSendWA ? 'bg-green-600/20 border-green-500 text-green-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${autoSendWA ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`}></div>
+                WA {autoSendWA ? 'ON' : 'OFF'}
+            </button>
+        </div>
       </div>
 
       {lastMessage && (
@@ -167,25 +187,42 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
                       <Search className={`absolute left-4 top-3.5 ${isHaidMode ? 'text-pink-400' : 'text-slate-500'}`} size={20} />
                       <input type="text" placeholder={isHaidMode ? "Cari Siswi Putri..." : "Cari Hero (Siswa)..."} className="w-full pl-12 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl outline-none text-slate-200" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                   </div>
-                  <select value={manualClassFilter} onChange={(e) => setManualClassFilter(e.target.value)} className="pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-sm appearance-none cursor-pointer">
-                      <option value="ALL">Semua Kelas</option>
-                      {uniqueClasses.map((cls) => (<option key={cls} value={cls}>{cls}</option>))}
-                  </select>
-                  <button onClick={() => { setIsHaidMode(!isHaidMode); setSelectedIds(new Set()); }} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all ${isHaidMode ? 'bg-pink-900/40 border-pink-500 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.3)]' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
-                    <Droplets size={16} /> {isHaidMode ? 'MODE HAID ON' : 'INPUT HAID'}
-                  </button>
+                  <div className="flex gap-2">
+                    <select value={manualClassFilter} onChange={(e) => setManualClassFilter(e.target.value)} className="pl-4 pr-8 py-3 bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-sm appearance-none cursor-pointer flex-1 md:flex-none">
+                        <option value="ALL">Semua Kelas</option>
+                        {uniqueClasses.map((cls) => (<option key={cls} value={cls}>{cls}</option>))}
+                    </select>
+                    <button onClick={() => { setIsHaidMode(!isHaidMode); setSelectedIds(new Set()); }} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all ${isHaidMode ? 'bg-pink-900/40 border-pink-500 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.3)]' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                        <Droplets size={16} /> {isHaidMode ? 'HAID' : 'HAID'}
+                    </button>
+                  </div>
               </div>
-              {selectedIds.size > 0 && (
-                      <button onClick={handleBulkAttendance} disabled={isProcessing} className={`w-full text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-3 transition-all border ${isHaidMode ? 'bg-pink-600 hover:bg-pink-500' : 'bg-emerald-600 hover:bg-emerald-500'} disabled:opacity-50`}>
-                          {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <CheckSquare size={20} />}
-                          {isHaidMode ? `Simpan Status HAID (${selectedIds.size})` : `Simpan Absensi (${selectedIds.size})`}
-                      </button>
-              )}
+              
+              {/* Info Sisa */}
+              <div className="flex justify-between items-center px-1">
+                 <div className="text-xs text-slate-400 font-mono">
+                    Sisa: <span className="text-white font-bold">{remainingCount}</span> siswa belum absen
+                 </div>
+                 {selectedIds.size > 0 && (
+                        <button onClick={handleBulkAttendance} disabled={isProcessing} className={`text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all border ${isHaidMode ? 'bg-pink-600 hover:bg-pink-500' : 'bg-emerald-600 hover:bg-emerald-500'} disabled:opacity-50`}>
+                            {isProcessing ? <Loader2 className="animate-spin" size={14} /> : <CheckSquare size={14} />}
+                            SIMPAN ({selectedIds.size})
+                        </button>
+                 )}
+              </div>
           </div>
           <div className="max-h-[600px] overflow-y-auto p-2 no-scrollbar">
               <ul className="space-y-2">
                   {filteredStudents.length === 0 ? (
-                      <li className="text-center p-8 text-slate-500 italic">Data siswa tidak ditemukan.</li>
+                      <li className="text-center p-8 text-slate-500 italic flex flex-col items-center gap-2">
+                          <CheckCircle2 size={32} className="opacity-20" />
+                          <span>{showAttended ? 'Tidak ada data siswa.' : 'Semua siswa (sesuai filter) sudah diabsen!'}</span>
+                          {!showAttended && todayAttendanceMap.size > 0 && (
+                             <button onClick={() => setShowAttended(true)} className="text-xs text-cyan-500 hover:underline mt-2">
+                                Lihat yang sudah absen
+                             </button>
+                          )}
+                      </li>
                   ) : (
                       filteredStudents.map((student) => {
                           const isSelected = selectedIds.has(student.id);
@@ -196,7 +233,7 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
                           return (
                               <li key={student.id} 
                                   onClick={() => handleManualClick(student)} 
-                                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group 
+                                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group animate-fade-in
                                       ${isAttended 
                                           ? (isHaid ? 'bg-pink-900/40 border-pink-600' : 'bg-emerald-900/40 border-emerald-600') 
                                           : 'bg-slate-800/50 border-transparent hover:bg-slate-800 hover:border-slate-600'
@@ -206,7 +243,7 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
                                       <div className={`w-8 h-8 rounded flex items-center justify-center border transition-all
                                           ${isAttended 
                                               ? (isHaid ? 'bg-pink-500 border-pink-400 text-white' : 'bg-emerald-500 border-emerald-400 text-white') 
-                                              : 'bg-slate-900 border-slate-700 text-transparent'
+                                              : 'bg-slate-900 border-slate-700 text-transparent group-hover:bg-slate-800'
                                           }`}>
                                           {isAttended ? <Check size={20} strokeWidth={4} /> : null}
                                       </div>
