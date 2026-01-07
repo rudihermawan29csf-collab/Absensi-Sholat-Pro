@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 // Fix: Removed incorrect import from 'lucide-center' which doesn't exist.
-import { Shield as ShieldIcon, Users as UsersIcon, QrCode as QrCodeIcon, Trophy as TrophyIcon, LogOut as LogOutIcon, User as UserIcon, Home as HomeIcon, Loader2 as LoaderIcon, RefreshCw as RefreshCwIcon, AlertTriangle } from 'lucide-react';
+import { Shield as ShieldIcon, Users as UsersIcon, QrCode as QrCodeIcon, Trophy as TrophyIcon, LogOut as LogOutIcon, User as UserIcon, Home as HomeIcon, Loader2 as LoaderIcon, RefreshCw as RefreshCwIcon, AlertTriangle, ClipboardCheck, UserCheck } from 'lucide-react';
 import ScannerTab from './components/ScannerTab';
 import StudentList from './components/StudentList';
 import Reports from './components/Reports';
@@ -175,7 +175,7 @@ function App() {
         <div className="animate-fade-in">
           {activeTab === 'dashboard' && userRole !== 'PARENT' && <Dashboard students={students} records={records} />}
           
-          {/* PERUBAHAN: Hanya TEACHER yang bisa mengakses tab Scanner */}
+          {/* PERUBAHAN: Hanya TEACHER yang bisa mengakses tab Absen (Manual) */}
           {activeTab === 'scan' && userRole === 'TEACHER' && (
             <ScannerTab students={students} records={records} onRecordUpdate={handleRecordUpdate} currentUser={currentUser} userRole={userRole} />
           )}
@@ -194,11 +194,11 @@ function App() {
                 </div>
              </button>
              
-             {/* PERUBAHAN: Tombol Scan hanya muncul untuk TEACHER */}
+             {/* PERUBAHAN: Tombol Absen Manual hanya muncul untuk TEACHER */}
              {userRole === 'TEACHER' && (
                 <button onClick={() => setActiveTab('scan')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'scan' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
                     <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'scan' ? 'bg-slate-800 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-slate-900 border-slate-700'}`}>
-                    <ShieldIcon size={22} className={`transform -rotate-45 ${activeTab === 'scan' ? 'text-cyan-400' : 'text-slate-400'}`} />
+                      <UserCheck size={22} className={`transform -rotate-45 ${activeTab === 'scan' ? 'text-cyan-400' : 'text-slate-400'}`} />
                     </div>
                 </button>
              )}

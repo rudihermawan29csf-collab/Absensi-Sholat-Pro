@@ -1,7 +1,6 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Scan, UserCheck, Search, QrCode, X, Sparkles, Zap, Camera, Keyboard, Send, Phone, Filter, CheckSquare, Square, Check, Droplets, Loader2, Trash2 } from 'lucide-react';
-import { QrReader } from 'react-qr-reader';
+import React, { useState, useMemo } from 'react';
+import { UserCheck, Search, Sparkles, Zap, Droplets, Loader2, Trash2, CheckSquare, Check, Filter } from 'lucide-react';
 import { Student, AttendanceRecord, UserRole } from '../types';
 import { addAttendanceRecordToSheet, deleteAttendanceRecord } from '../services/storageService';
 
@@ -14,9 +13,6 @@ interface ScannerTabProps {
 }
 
 const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpdate, currentUser, userRole }) => {
-  // PERUBAHAN: Default mode 'scan' untuk semua pengguna (Guru)
-  const [mode, setMode] = useState<'scan' | 'manual'>('scan');
-  const [scanMethod, setScanMethod] = useState<'camera' | 'usb'>('camera');
   const [autoSendWA, setAutoSendWA] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   
@@ -24,19 +20,7 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
   const [manualClassFilter, setManualClassFilter] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isHaidMode, setIsHaidMode] = useState(false);
-
-  const [barcodeInput, setBarcodeInput] = useState('');
   const [lastMessage, setLastMessage] = useState<{ text: string; type: 'success' | 'error'; student?: Student } | null>(null);
-  
-  const lastScanTimeRef = useRef<number>(0);
-  const lastScannedIdRef = useRef<string>('');
-  const scanInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (mode === 'scan' && scanMethod === 'usb') {
-      scanInputRef.current?.focus();
-    }
-  }, [mode, scanMethod, lastMessage]);
 
   const uniqueClasses = useMemo(() => {
     const classes = new Set(students.map(s => s.className));
@@ -60,9 +44,6 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
 
   const filteredStudents = useMemo(() => {
     return students.filter(s => {
-      // PERBAIKAN: Jangan filter siswa yang sudah absen. Tampilkan agar bisa di-undo (dihapus).
-      // if (todayAttendanceMap.has(s.id)) return false; 
-      
       if (isHaidMode && s.gender !== 'P') return false;
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             s.id.toLowerCase().includes(searchQuery.toLowerCase());
@@ -94,6 +75,7 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
   };
 
   const handleManualClick = async (student: Student) => {
+    if (isProcessing) return;
     const existingRecord = todayAttendanceMap.get(student.id);
 
     if (existingRecord) {
@@ -141,13 +123,6 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
     setIsProcessing(false);
   };
 
-  const toggleSelection = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedIds(newSet);
-  };
-
   const sendWhatsappMessage = (student: Student, status: 'PRESENT' | 'HAID' = 'PRESENT') => {
     if (!student.parentPhone) return;
     let phone = student.parentPhone.replace(/\D/g, '');
@@ -159,46 +134,16 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
 
-  const handleCameraScan = (result: any, error: any) => {
-    if (error || isProcessing) return;
-    if (result) {
-      const text = (typeof result.getText === 'function' ? result.getText() : result.text) || '';
-      if (!text) return;
-      const now = Date.now();
-      if (text === lastScannedIdRef.current && now - lastScanTimeRef.current < 4000) return;
-      lastScanTimeRef.current = now;
-      lastScannedIdRef.current = text;
-      processScan(text);
-    }
-  };
-
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!barcodeInput || isProcessing) return;
-    processScan(barcodeInput);
-    setBarcodeInput('');
-  };
-
-  const processScan = (inputCode: string) => {
-    const student = students.find(s => s.id === inputCode || s.name.toLowerCase() === inputCode.toLowerCase());
-    if (student) handleAttendance(student);
-    else {
-      setLastMessage({ text: `Target tidak ditemukan: ${inputCode}`, type: 'error' });
-      setTimeout(() => setLastMessage(null), 3000);
-    }
-  };
-
   return (
-    <div className="space-y-8 pb-20">
-      {/* PERUBAHAN: Selalu tampilkan toggle mode SCANNER / MANUAL untuk semua user yang akses halaman ini */}
-      <div className="flex bg-slate-800/50 p-1.5 rounded-full w-full max-w-md mx-auto border border-white/10 relative backdrop-blur-md">
-        <button onClick={() => setMode('scan')} className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-full transition-all flex items-center justify-center gap-2 ${mode === 'scan' ? 'text-slate-900' : 'text-slate-400'}`}>
-          {mode === 'scan' && <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full shadow-[0_0_15px_rgba(34,211,238,0.5)] -z-10"></div>}
-          <QrCode size={18} /> SCANNER
-        </button>
-        <button onClick={() => setMode('manual')} className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-full transition-all flex items-center justify-center gap-2 ${mode === 'manual' ? 'text-slate-900' : 'text-slate-400'}`}>
-            {mode === 'manual' && <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.5)] -z-10"></div>}
-          <UserCheck size={18} /> MANUAL
+    <div className="space-y-4 pb-20">
+      {/* Title Header */}
+      <div className="flex items-center justify-between mb-2 px-2">
+        <h2 className="text-xl font-bold text-amber-400 font-gaming flex items-center gap-2">
+           <UserCheck className="text-cyan-400" /> ABSENSI MANUAL
+        </h2>
+        <button onClick={() => setAutoSendWA(!autoSendWA)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border flex items-center gap-2 transition-all ${autoSendWA ? 'bg-green-600/20 border-green-500 text-green-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+             <div className={`w-1.5 h-1.5 rounded-full ${autoSendWA ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`}></div>
+             WA {autoSendWA ? 'ON' : 'OFF'}
         </button>
       </div>
 
@@ -213,126 +158,82 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
         </div>
       )}
 
-      {/* MODE SCANNER */}
-      {mode === 'scan' && (
-        <div className="flex flex-col items-center justify-center space-y-6 py-4">
-          <div className="flex flex-wrap justify-center gap-3 w-full max-w-lg">
-             <div className="flex gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
-                <button onClick={() => setScanMethod('camera')} className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${scanMethod === 'camera' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'text-slate-500'}`}><Camera size={14} /> KAMERA</button>
-                <button onClick={() => setScanMethod('usb')} className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${scanMethod === 'usb' ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' : 'text-slate-500'}`}><Keyboard size={14} /> USB</button>
-            </div>
-            <button onClick={() => setAutoSendWA(!autoSendWA)} className={`px-4 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 transition-all ${autoSendWA ? 'bg-green-600/20 border-green-500 text-green-400' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
-                <div className={`w-2 h-2 rounded-full ${autoSendWA ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`}></div>
-                AUTO WA {autoSendWA ? 'ON' : 'OFF'}
-            </button>
-          </div>
-
-          <div className="relative group w-full max-w-sm">
-            <div className="absolute -inset-10 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 rounded-full blur-xl opacity-20 group-hover:opacity-40 transition animate-pulse"></div>
-            <div className="relative bg-slate-900/90 rounded-2xl p-6 shadow-2xl border border-cyan-500/30 flex flex-col items-center min-h-[400px]">
-              <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 to-blue-400 mb-6 font-gaming tracking-widest uppercase">
-                {isProcessing ? 'SINKRONISASI...' : (scanMethod === 'camera' ? 'CAMERA SCAN' : 'USB SCANNER')}
-              </h3>
-
-              {scanMethod === 'camera' ? (
-                <div className={`w-full aspect-square bg-black rounded-lg overflow-hidden border-2 relative shadow-inner ${isProcessing ? 'opacity-50 grayscale border-slate-700' : 'border-cyan-500/50'}`}>
-                  {!isProcessing && <div className="absolute top-0 left-0 w-full h-1 bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,1)] z-20 animate-[scan_2s_ease-in-out_infinite]"></div>}
-                  {isProcessing && <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/60"><Loader2 className="animate-spin text-cyan-400" size={40} /></div>}
-                  <QrReader onResult={handleCameraScan} constraints={{ facingMode: 'environment' }} scanDelay={1000} containerStyle={{ width: '100%', height: '100%' }} videoStyle={{ objectFit: 'cover' }} />
-                </div>
-              ) : (
-                <div className="w-full flex flex-col items-center py-8">
-                   <div className="relative mb-6">
-                    <div className="bg-slate-950 p-6 rounded-lg border border-cyan-500/50">
-                      {isProcessing ? <Loader2 size={80} className="text-cyan-400 animate-spin" /> : <Scan size={80} className="text-cyan-400" />}
-                    </div>
+      {/* MANUAL MODE UI */}
+      <div className="relative">
+          <div className={`bg-slate-900/80 backdrop-blur-md rounded-2xl shadow-xl border overflow-hidden pb-4 transition-colors duration-500 ${isHaidMode ? 'border-pink-500/30' : 'border-white/10'}`}>
+          <div className="p-4 border-b border-white/5 bg-slate-950/50 sticky top-0 z-20 flex flex-col gap-3">
+              <div className="flex flex-col md:flex-row gap-3">
+                  <div className="relative group flex-grow">
+                      <Search className={`absolute left-4 top-3.5 ${isHaidMode ? 'text-pink-400' : 'text-slate-500'}`} size={20} />
+                      <input type="text" placeholder={isHaidMode ? "Cari Siswi Putri..." : "Cari Hero (Siswa)..."} className="w-full pl-12 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl outline-none text-slate-200" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                   </div>
-                  <form onSubmit={handleBarcodeSubmit} className="w-full relative mt-4">
-                    <input ref={scanInputRef} type="text" value={barcodeInput} onChange={(e) => setBarcodeInput(e.target.value)} placeholder={isProcessing ? "Mohon Tunggu..." : "Menunggu Input USB..." } disabled={isProcessing} className="w-full px-4 py-4 bg-slate-950 border border-cyan-800 rounded-xl focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none transition-all text-center text-lg font-mono text-cyan-300 placeholder-slate-700" autoFocus />
-                  </form>
-                </div>
+                  <select value={manualClassFilter} onChange={(e) => setManualClassFilter(e.target.value)} className="pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-sm appearance-none cursor-pointer">
+                      <option value="ALL">Semua Kelas</option>
+                      {uniqueClasses.map((cls) => (<option key={cls} value={cls}>{cls}</option>))}
+                  </select>
+                  <button onClick={() => { setIsHaidMode(!isHaidMode); setSelectedIds(new Set()); }} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all ${isHaidMode ? 'bg-pink-900/40 border-pink-500 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.3)]' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                    <Droplets size={16} /> {isHaidMode ? 'MODE HAID ON' : 'INPUT HAID'}
+                  </button>
+              </div>
+              {selectedIds.size > 0 && (
+                      <button onClick={handleBulkAttendance} disabled={isProcessing} className={`w-full text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-3 transition-all border ${isHaidMode ? 'bg-pink-600 hover:bg-pink-500' : 'bg-emerald-600 hover:bg-emerald-500'} disabled:opacity-50`}>
+                          {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <CheckSquare size={20} />}
+                          {isHaidMode ? `Simpan Status HAID (${selectedIds.size})` : `Simpan Absensi (${selectedIds.size})`}
+                      </button>
               )}
-            </div>
           </div>
-        </div>
-      )}
+          <div className="max-h-[600px] overflow-y-auto p-2 no-scrollbar">
+              <ul className="space-y-2">
+                  {filteredStudents.length === 0 ? (
+                      <li className="text-center p-8 text-slate-500 italic">Data siswa tidak ditemukan.</li>
+                  ) : (
+                      filteredStudents.map((student) => {
+                          const isSelected = selectedIds.has(student.id);
+                          const existingRecord = todayAttendanceMap.get(student.id);
+                          const isAttended = !!existingRecord;
+                          const isHaid = existingRecord?.status === 'HAID';
 
-      {mode === 'manual' && (
-        <div className="relative">
-            <div className={`bg-slate-900/80 backdrop-blur-md rounded-2xl shadow-xl border overflow-hidden pb-4 transition-colors duration-500 ${isHaidMode ? 'border-pink-500/30' : 'border-white/10'}`}>
-            <div className="p-4 border-b border-white/5 bg-slate-950/50 sticky top-0 z-20 flex flex-col gap-3">
-                <div className="flex flex-col md:flex-row gap-3">
-                    <div className="relative group flex-grow">
-                        <Search className={`absolute left-4 top-3.5 ${isHaidMode ? 'text-pink-400' : 'text-slate-500'}`} size={20} />
-                        <input type="text" placeholder={isHaidMode ? "Cari Siswi Putri..." : "Cari Hero (Siswa)..."} className="w-full pl-12 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl outline-none text-slate-200" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                    </div>
-                    <select value={manualClassFilter} onChange={(e) => setManualClassFilter(e.target.value)} className="pl-10 pr-4 py-3 bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-sm appearance-none cursor-pointer">
-                        <option value="ALL">Semua Kelas</option>
-                        {uniqueClasses.map((cls) => (<option key={cls} value={cls}>{cls}</option>))}
-                    </select>
-                    <button onClick={() => { setIsHaidMode(!isHaidMode); setSelectedIds(new Set()); }} className={`px-4 py-2 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all ${isHaidMode ? 'bg-pink-900/40 border-pink-500 text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.3)]' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
-                      <Droplets size={16} /> {isHaidMode ? 'MODE HAID ON' : 'INPUT HAID'}
-                    </button>
-                </div>
-                {selectedIds.size > 0 && (
-                        <button onClick={handleBulkAttendance} disabled={isProcessing} className={`w-full text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-3 transition-all border ${isHaidMode ? 'bg-pink-600 hover:bg-pink-500' : 'bg-emerald-600 hover:bg-emerald-500'} disabled:opacity-50`}>
-                            {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <CheckSquare size={20} />}
-                            {isHaidMode ? `Simpan Status HAID (${selectedIds.size})` : `Simpan Absensi (${selectedIds.size})`}
-                        </button>
-                )}
-            </div>
-            <div className="max-h-[500px] overflow-y-auto p-2">
-                <ul className="space-y-2">
-                    {filteredStudents.map((student) => {
-                        const isSelected = selectedIds.has(student.id);
-                        const existingRecord = todayAttendanceMap.get(student.id);
-                        const isAttended = !!existingRecord;
-                        const isHaid = existingRecord?.status === 'HAID';
-
-                        return (
-                            <li key={student.id} 
-                                onClick={() => handleManualClick(student)} 
-                                className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group 
-                                    ${isAttended 
-                                        ? (isHaid ? 'bg-pink-900/40 border-pink-600' : 'bg-emerald-900/40 border-emerald-600') 
-                                        : 'bg-slate-800/50 border-transparent hover:bg-slate-800 hover:border-slate-600'
-                                    }`}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-8 h-8 rounded flex items-center justify-center border transition-all
-                                        ${isAttended 
-                                            ? (isHaid ? 'bg-pink-500 border-pink-400 text-white' : 'bg-emerald-500 border-emerald-400 text-white') 
-                                            : 'bg-slate-900 border-slate-700 text-transparent'
-                                        }`}>
-                                        {isAttended ? <Check size={20} strokeWidth={4} /> : null}
-                                    </div>
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 ${student.gender === 'L' ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-pink-900/30 border-pink-500 text-pink-400'}`}>
-                                        {student.gender || '?'}
-                                    </div>
-                                    <div>
-                                        <p className={`font-bold font-gaming tracking-wide ${isAttended ? 'text-white' : (student.gender === 'P' ? 'text-pink-200' : 'text-slate-200')}`}>{student.name}</p>
-                                        <div className="flex gap-2 text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-tighter">
-                                            ID: {student.id} | {student.className}
-                                            {isAttended && <span className="text-white bg-slate-800 px-1 rounded ml-2">{isHaid ? 'SEDANG HAID' : 'HADIR'}</span>}
-                                        </div>
-                                    </div>
-                                </div>
-                                {isAttended && (
-                                    <div className="opacity-60 group-hover:opacity-100 bg-red-900/50 p-2 rounded-lg text-red-400 border border-red-500/30">
-                                        <Trash2 size={18} />
-                                    </div>
-                                )}
-                            </li>
-                        );
-                    })}
-                </ul>
-            </div>
-            </div>
-        </div>
-      )}
-      <style>{`
-        @keyframes scan { 0% { top: 10%; opacity: 0; } 50% { opacity: 1; } 100% { top: 90%; opacity: 0; } }
-      `}</style>
+                          return (
+                              <li key={student.id} 
+                                  onClick={() => handleManualClick(student)} 
+                                  className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group 
+                                      ${isAttended 
+                                          ? (isHaid ? 'bg-pink-900/40 border-pink-600' : 'bg-emerald-900/40 border-emerald-600') 
+                                          : 'bg-slate-800/50 border-transparent hover:bg-slate-800 hover:border-slate-600'
+                                      }`}
+                              >
+                                  <div className="flex items-center gap-4">
+                                      <div className={`w-8 h-8 rounded flex items-center justify-center border transition-all
+                                          ${isAttended 
+                                              ? (isHaid ? 'bg-pink-500 border-pink-400 text-white' : 'bg-emerald-500 border-emerald-400 text-white') 
+                                              : 'bg-slate-900 border-slate-700 text-transparent'
+                                          }`}>
+                                          {isAttended ? <Check size={20} strokeWidth={4} /> : null}
+                                      </div>
+                                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 ${student.gender === 'L' ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-pink-900/30 border-pink-500 text-pink-400'}`}>
+                                          {student.gender || '?'}
+                                      </div>
+                                      <div>
+                                          <p className={`font-bold font-gaming tracking-wide ${isAttended ? 'text-white' : (student.gender === 'P' ? 'text-pink-200' : 'text-slate-200')}`}>{student.name}</p>
+                                          <div className="flex gap-2 text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-tighter">
+                                              ID: {student.id} | {student.className}
+                                              {isAttended && <span className="text-white bg-slate-800 px-1 rounded ml-2">{isHaid ? 'SEDANG HAID' : 'HADIR'}</span>}
+                                          </div>
+                                      </div>
+                                  </div>
+                                  {isAttended && (
+                                      <div className="opacity-60 group-hover:opacity-100 bg-red-900/50 p-2 rounded-lg text-red-400 border border-red-500/30">
+                                          <Trash2 size={18} />
+                                      </div>
+                                  )}
+                              </li>
+                          );
+                      })
+                  )}
+              </ul>
+          </div>
+          </div>
+      </div>
     </div>
   );
 };
