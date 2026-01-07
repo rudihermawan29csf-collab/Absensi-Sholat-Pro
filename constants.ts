@@ -77,5 +77,6 @@ export const STORAGE_KEYS = {
   TEACHERS: 'smpn3pacet_teachers_cache',
   ATTENDANCE: 'smpn3pacet_attendance_cache',
   AUTH: 'smpn3pacet_auth_session',
-  CONFIG: 'smpn3pacet_school_config'
+  CONFIG: 'smpn3pacet_school_config',
+  HOLIDAYS: 'smpn3pacet_holidays_cache'
 };

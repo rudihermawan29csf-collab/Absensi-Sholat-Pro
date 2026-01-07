@@ -9,8 +9,8 @@ import SettingsTab from './components/SettingsTab';
 import Reports from './components/Reports';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import { Student, AttendanceRecord, TabView, UserRole, Teacher, SchoolConfig } from './types';
-import { getStudents, getAttendance, getTeachers, getSchoolConfig } from './services/storageService';
+import { Student, AttendanceRecord, TabView, UserRole, Teacher, SchoolConfig, Holiday } from './types';
+import { getStudents, getAttendance, getTeachers, getSchoolConfig, getHolidays } from './services/storageService';
 import { STORAGE_KEYS, INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CONFIG } from './constants';
 import { isFirebaseConfigured } from './services/firebase';
 
@@ -25,6 +25,7 @@ function App() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [schoolConfig, setSchoolConfig] = useState<SchoolConfig>(INITIAL_CONFIG);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Inisialisasi dari Local Storage (Sangat Cepat)
@@ -33,6 +34,7 @@ function App() {
     const localTeachers = localStorage.getItem(STORAGE_KEYS.TEACHERS);
     const localRecs = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
     const localConfig = localStorage.getItem(STORAGE_KEYS.CONFIG);
+    const localHolidays = localStorage.getItem(STORAGE_KEYS.HOLIDAYS);
     
     // Validasi data lokal siswa
     if (localStuds) {
@@ -61,6 +63,10 @@ function App() {
       } catch (e) { setSchoolConfig(INITIAL_CONFIG); }
     }
 
+    if (localHolidays) {
+      try { setHolidays(JSON.parse(localHolidays)); } catch (e) { setHolidays([]); }
+    }
+
     const sessionAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
     if (sessionAuth) {
       try {
@@ -85,11 +91,12 @@ function App() {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const [studentData, teacherData, attendanceData, configData] = await Promise.all([
+      const [studentData, teacherData, attendanceData, configData, holidayData] = await Promise.all([
         getStudents(),
         getTeachers(),
         getAttendance(),
-        getSchoolConfig()
+        getSchoolConfig(),
+        getHolidays()
       ]);
       
       if (studentData && studentData.length > 0) setStudents(studentData);
@@ -99,6 +106,7 @@ function App() {
       else if (teachers.length === 0) setTeachers(INITIAL_TEACHERS);
       
       if (configData) setSchoolConfig(configData);
+      if (holidayData) setHolidays(holidayData);
       
       setRecords(attendanceData);
     } catch (error) {
@@ -202,10 +210,10 @@ function App() {
           {/* TAB ADMIN: Data Guru */}
           {activeTab === 'teachers' && userRole === 'ADMIN' && <TeacherList teachers={teachers} setTeachers={setTeachers} />}
 
-          {/* TAB ADMIN: Settings (NEW) */}
-          {activeTab === 'settings' && userRole === 'ADMIN' && <SettingsTab config={schoolConfig} setConfig={setSchoolConfig} />}
+          {/* TAB ADMIN: Settings */}
+          {activeTab === 'settings' && userRole === 'ADMIN' && <SettingsTab config={schoolConfig} setConfig={setSchoolConfig} holidays={holidays} setHolidays={setHolidays} />}
           
-          {activeTab === 'reports' && <Reports records={records} students={students} onRecordUpdate={handleRecordUpdate} viewOnlyStudent={parentStudentData} />}
+          {activeTab === 'reports' && <Reports records={records} students={students} onRecordUpdate={handleRecordUpdate} viewOnlyStudent={parentStudentData} holidays={holidays} />}
         </div>
       </main>
 

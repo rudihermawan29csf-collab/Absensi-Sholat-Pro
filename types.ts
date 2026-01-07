@@ -28,6 +28,12 @@ export interface SchoolConfig {
   semester: 'GANJIL' | 'GENAP';
 }
 
+export interface Holiday {
+  id: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+}
+
 export type TabView = 'dashboard' | 'scan' | 'students' | 'teachers' | 'reports' | 'settings';
 export type UserRole = 'ADMIN' | 'TEACHER' | 'PARENT';
 

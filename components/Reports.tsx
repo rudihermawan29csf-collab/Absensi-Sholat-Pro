@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { AttendanceRecord, ReportPeriod, Student } from '../types';
-import { Calendar, Crown, Medal, TrendingUp, CheckCircle2, List, FileText, Loader2, UserCircle, XCircle, Edit, Trash2, Droplets } from 'lucide-react';
+import { AttendanceRecord, ReportPeriod, Student, Holiday } from '../types';
+import { Calendar, Crown, Medal, TrendingUp, CheckCircle2, List, FileText, Loader2, UserCircle, XCircle, Edit, Trash2, Droplets, CalendarOff } from 'lucide-react';
 import { format, subDays, eachDayOfInterval, parseISO } from 'date-fns';
+import { id as idLocale } from 'date-fns/locale';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { deleteAttendanceRecord, updateAttendanceStatus } from '../services/storageService';
@@ -12,9 +13,10 @@ interface ReportsProps {
   students: Student[];
   onRecordUpdate: () => void;
   viewOnlyStudent?: Student | null;
+  holidays?: Holiday[];
 }
 
-const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecordUpdate, viewOnlyStudent }) => {
+const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecordUpdate, viewOnlyStudent, holidays = [] }) => {
   const [period, setPeriod] = useState<ReportPeriod>(ReportPeriod.DAILY);
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,26 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
       return Array.from(classes).sort();
   }, [students]);
 
+  // Helper untuk Cek Hari Libur
+  const getDayStatus = (dateStr: string) => {
+      const date = parseISO(dateStr);
+      const isSunday = date.getDay() === 0;
+      const manualHoliday = holidays.find(h => h.date === dateStr);
+      
+      return {
+          isHoliday: isSunday || !!manualHoliday,
+          holidayReason: manualHoliday ? manualHoliday.description : (isSunday ? 'Hari Minggu' : '')
+      };
+  };
+
   // --- DATA PROCESSING START ---
+
+  const dailyStatusInfo = useMemo(() => {
+     const today = format(new Date(), 'yyyy-MM-dd'); // Default to today, or user selected
+     // Note: For daily report, we usually check against TODAY. But if we add a date picker later, use that.
+     // Currently daily report in this app is "TODAY".
+     return getDayStatus(today);
+  }, [holidays]);
 
   const dailyMasterList = useMemo(() => {
     if (!students) return [];
@@ -102,12 +123,21 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                 let haidCount = 0;
                 const attendanceMap = daysInRange.map(day => {
                     const dateStr = format(day, 'yyyy-MM-dd');
+                    const dayStatus = getDayStatus(dateStr);
+
                     const record = records.find(r => r.studentId === student.id && r.date === dateStr);
                     if (record) {
                         if (record.status === 'HAID') haidCount++;
                         else presentCount++;
                     }
-                    return { date: dateStr, isPresent: !!record, isHaid: record?.status === 'HAID', recordId: record?.id };
+                    return { 
+                        date: dateStr, 
+                        isPresent: !!record, 
+                        isHaid: record?.status === 'HAID', 
+                        recordId: record?.id,
+                        isHoliday: dayStatus.isHoliday,
+                        holidayReason: dayStatus.holidayReason
+                    };
                 });
                 return { ...student, attendanceMap, presentCount, haidCount };
             }).sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''))
@@ -116,7 +146,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
         console.error("Date parsing error", e);
         return { daysInRange: [], matrix: [] };
     }
-  }, [records, students, startDate, endDate, selectedClass, viewOnlyStudent]);
+  }, [records, students, startDate, endDate, selectedClass, viewOnlyStudent, holidays]);
 
   const monthlyStats = useMemo(() => {
     if (!students || students.length === 0) return [];
@@ -215,6 +245,13 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
         <div ref={reportRef} className="p-2 -m-2 rounded-xl bg-slate-900/50">
             {period === ReportPeriod.DAILY && (
                 <div className="space-y-4">
+                    {dailyStatusInfo.isHoliday && (
+                        <div className="bg-pink-900/30 border border-pink-500/50 p-3 rounded-lg flex items-center gap-3 text-pink-300 text-sm font-bold mb-2">
+                             <CalendarOff />
+                             <span>LIBUR: {dailyStatusInfo.holidayReason}</span>
+                        </div>
+                    )}
+
                     <div className="flex flex-col md:flex-row justify-between items-center gap-4 px-2">
                         <div className="flex gap-3 text-[11px] md:text-xs text-slate-400">
                            <span>Total: <b className="text-white">{dailyMasterList.length}</b></span>
@@ -312,7 +349,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                                     <th className="p-3">Kelas</th>
                                     <th className="p-3 min-w-[150px]">Nama</th>
                                     {weeklyMatrixData.daysInRange.map((d, i) => (
-                                        <th key={i} className="p-1 text-center min-w-[30px]">{format(d, 'dd')}</th>
+                                        <th key={i} className={`p-1 text-center min-w-[30px] ${d.getDay() === 0 ? 'text-red-500' : ''}`}>{format(d, 'dd')}</th>
                                     ))}
                                     <th className="p-3 text-center text-green-400">V</th>
                                     <th className="p-3 text-center text-pink-400">H</th>
@@ -328,16 +365,22 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                                             <td className="p-3 font-bold text-cyan-500">{s.className}</td>
                                             <td className="p-3">{s.name}</td>
                                             {s.attendanceMap.map((d, di) => (
-                                                <td key={di} className="p-1 text-center border-l border-slate-800/30">
+                                                <td key={di} className={`p-1 text-center border-l border-slate-800/30 ${d.isHoliday ? 'bg-slate-800/50' : ''}`}>
                                                     <div className="flex flex-col items-center">
-                                                        {d.isPresent ? (
-                                                            <div className="group relative flex flex-col items-center">
-                                                                <span className={d.isHaid ? 'text-pink-500' : 'text-green-500'}>{d.isHaid ? 'H' : 'V'}</span>
-                                                                {!viewOnlyStudent && (
-                                                                    <button onClick={() => handleDelete(d.recordId!)} className="absolute -top-4 opacity-0 group-hover:opacity-100 bg-red-600 rounded p-1 text-[8px] z-50">DEL</button>
-                                                                )}
-                                                            </div>
-                                                        ) : '-'}
+                                                        {d.isHoliday ? (
+                                                           <div className="w-full h-full flex items-center justify-center text-slate-600 font-bold transform -rotate-90 text-[8px] whitespace-nowrap" title={d.holidayReason}>
+                                                              LIBUR
+                                                           </div>
+                                                        ) : (
+                                                            d.isPresent ? (
+                                                                <div className="group relative flex flex-col items-center">
+                                                                    <span className={d.isHaid ? 'text-pink-500' : 'text-green-500'}>{d.isHaid ? 'H' : 'V'}</span>
+                                                                    {!viewOnlyStudent && (
+                                                                        <button onClick={() => handleDelete(d.recordId!)} className="absolute -top-4 opacity-0 group-hover:opacity-100 bg-red-600 rounded p-1 text-[8px] z-50">DEL</button>
+                                                                    )}
+                                                                </div>
+                                                            ) : '-'
+                                                        )}
                                                     </div>
                                                 </td>
                                             ))}

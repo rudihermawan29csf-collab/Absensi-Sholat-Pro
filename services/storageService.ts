@@ -1,5 +1,5 @@
 
-import { Student, AttendanceRecord, Teacher, SchoolConfig } from '../types';
+import { Student, AttendanceRecord, Teacher, SchoolConfig, Holiday } from '../types';
 import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CONFIG, STORAGE_KEYS } from '../constants';
 import { db, isFirebaseConfigured } from './firebase';
 import { 
@@ -22,7 +22,77 @@ const COLL_STUDENTS = 'students';
 const COLL_TEACHERS = 'teachers';
 const COLL_ATTENDANCE = 'attendance';
 const COLL_CONFIG = 'config';
+const COLL_HOLIDAYS = 'holidays';
 const DOC_SCHOOL_CONFIG = 'school_settings';
+
+// --- HOLIDAY SERVICE ---
+
+export const getHolidays = async (): Promise<Holiday[]> => {
+  if (!isFirebaseConfigured) {
+    const stored = localStorage.getItem(STORAGE_KEYS.HOLIDAYS);
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  try {
+    const querySnapshot = await getDocs(collection(db, COLL_HOLIDAYS));
+    const holidays: Holiday[] = [];
+    querySnapshot.forEach((doc) => {
+      holidays.push(doc.data() as Holiday);
+    });
+    
+    // Sort by date desc
+    holidays.sort((a, b) => b.date.localeCompare(a.date));
+
+    localStorage.setItem(STORAGE_KEYS.HOLIDAYS, JSON.stringify(holidays));
+    return holidays;
+  } catch (e) {
+    console.error("Error fetching holidays:", e);
+    const stored = localStorage.getItem(STORAGE_KEYS.HOLIDAYS);
+    return stored ? JSON.parse(stored) : [];
+  }
+};
+
+export const saveHolidays = async (holidays: Holiday[]): Promise<boolean> => {
+  localStorage.setItem(STORAGE_KEYS.HOLIDAYS, JSON.stringify(holidays));
+
+  if (!isFirebaseConfigured) return true;
+
+  try {
+      // Simple strategy: We loop through local array. 
+      // For a proper sync we should handle deletes, but for now we rely on the App logic 
+      // where we pass the full list. Ideally, we should deleteDoc for removed items.
+      
+      // Let's just upsert for now.
+      const promises = holidays.map(h => {
+        return setDoc(doc(db, COLL_HOLIDAYS, h.id), h);
+      });
+      await Promise.all(promises);
+      return true;
+  } catch (error) {
+    console.error("Error saving holidays:", error);
+    return false;
+  }
+};
+
+export const deleteHoliday = async (id: string): Promise<boolean> => {
+   // Update local
+   const stored = localStorage.getItem(STORAGE_KEYS.HOLIDAYS);
+   if (stored) {
+     const list = JSON.parse(stored) as Holiday[];
+     const filtered = list.filter(h => h.id !== id);
+     localStorage.setItem(STORAGE_KEYS.HOLIDAYS, JSON.stringify(filtered));
+   }
+
+   if (!isFirebaseConfigured) return true;
+
+   try {
+     await deleteDoc(doc(db, COLL_HOLIDAYS, id));
+     return true;
+   } catch (e) {
+     console.error("Error deleting holiday:", e);
+     return false;
+   }
+};
 
 // --- CONFIG SERVICE ---
 
