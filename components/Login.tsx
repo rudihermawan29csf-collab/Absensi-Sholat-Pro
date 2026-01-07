@@ -1,15 +1,15 @@
 
 import React, { useState, useMemo } from 'react';
-import { TEACHERS } from '../constants';
 import { Lock, User, KeyRound, ShieldCheck, ChevronRight, Briefcase, GraduationCap } from 'lucide-react';
-import { Student, UserRole } from '../types';
+import { Student, UserRole, Teacher } from '../types';
 
 interface LoginProps {
   onLogin: (username: string, role: UserRole, studentData?: Student) => void;
   students: Student[];
+  teachers: Teacher[];
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin, students }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, students, teachers }) => {
   const [loginMode, setLoginMode] = useState<'STAFF' | 'PARENT'>('STAFF');
   
   // STAFF STATE
@@ -163,8 +163,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, students }) => {
                                     <option value="">Pilih Nama...</option>
                                     <option value="ADMINISTRATOR" className="font-bold text-amber-400">★ ADMINISTRATOR</option>
                                     <optgroup label="Dewan Guru">
-                                        {TEACHERS.map((t, i) => (
-                                            <option key={i} value={t}>{t}</option>
+                                        {teachers.map((t) => (
+                                            <option key={t.id} value={t.name}>{t.name}</option>
                                         ))}
                                     </optgroup>
                                 </select>

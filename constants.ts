@@ -1,8 +1,13 @@
 
-import { Student } from './types';
+import { Student, Teacher, SchoolConfig } from './types';
 
 // URL Google Apps Script Anda
 export const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwtcLk4tHst7HkGIv36oOasY6ollRDqp9AMTfKkua-5vOId6VO7c3TCsNyD2a4MNJFtOw/exec";
+
+export const INITIAL_CONFIG: SchoolConfig = {
+  academicYear: '2025/2026',
+  semester: 'GANJIL'
+};
 
 // DATA SISWA LENGKAP (Sample dipulihkan untuk IX A - IX G)
 export const INITIAL_STUDENTS: Student[] = [
@@ -47,28 +52,30 @@ export const INITIAL_STUDENTS: Student[] = [
   { id: '1156', className: 'IX G', name: 'QOMARUDDIN', gender: 'L' }
 ];
 
-export const TEACHERS = [
-  "Dra. Sri Hayati",
-  "Bakhtiar Rifai, SE",
-  "Moch. Husain Rifai Hamzah, S.Pd.",
-  "Rudi Hermawan, S.Pd.I",
-  "Okha Devi Anggraini, S.Pd.",
-  "Eka Hariyati, S. Pd.",
-  "Mikoe Wahyudi Putra, ST., S. Pd.",
-  "Purnadi, S. Pd.",
-  "Israfin Maria Ulfa, S.Pd",
-  "Syadam Budi Satrianto, S.Pd",
-  "Rebby Dwi Prataopu, S.Si",
-  "Mukhamad Yunus, S.Pd",
-  "Fahmi Wahyuni, S.Pd",
-  "Fakhita Madury, S.Sn",
-  "Retno Nawangwulan, S. Pd.",
-  "Emilia Kartika Sari, S.Pd",
-  "Akhmad Hariadi, S.Pd"
+export const INITIAL_TEACHERS: Teacher[] = [
+  { id: 't1', name: "Dra. Sri Hayati" },
+  { id: 't2', name: "Bakhtiar Rifai, SE" },
+  { id: 't3', name: "Moch. Husain Rifai Hamzah, S.Pd." },
+  { id: 't4', name: "Rudi Hermawan, S.Pd.I" },
+  { id: 't5', name: "Okha Devi Anggraini, S.Pd." },
+  { id: 't6', name: "Eka Hariyati, S. Pd." },
+  { id: 't7', name: "Mikoe Wahyudi Putra, ST., S. Pd." },
+  { id: 't8', name: "Purnadi, S. Pd." },
+  { id: 't9', name: "Israfin Maria Ulfa, S.Pd" },
+  { id: 't10', name: "Syadam Budi Satrianto, S.Pd" },
+  { id: 't11', name: "Rebby Dwi Prataopu, S.Si" },
+  { id: 't12', name: "Mukhamad Yunus, S.Pd" },
+  { id: 't13', name: "Fahmi Wahyuni, S.Pd" },
+  { id: 't14', name: "Fakhita Madury, S.Sn" },
+  { id: 't15', name: "Retno Nawangwulan, S. Pd." },
+  { id: 't16', name: "Emilia Kartika Sari, S.Pd" },
+  { id: 't17', name: "Akhmad Hariadi, S.Pd" }
 ];
 
 export const STORAGE_KEYS = {
   STUDENTS: 'smpn3pacet_students_cache',
+  TEACHERS: 'smpn3pacet_teachers_cache',
   ATTENDANCE: 'smpn3pacet_attendance_cache',
-  AUTH: 'smpn3pacet_auth_session'
+  AUTH: 'smpn3pacet_auth_session',
+  CONFIG: 'smpn3pacet_school_config'
 };

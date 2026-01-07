@@ -1,6 +1,6 @@
 
-import { Student, AttendanceRecord } from '../types';
-import { INITIAL_STUDENTS, STORAGE_KEYS } from '../constants';
+import { Student, AttendanceRecord, Teacher, SchoolConfig } from '../types';
+import { INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CONFIG, STORAGE_KEYS } from '../constants';
 import { db, isFirebaseConfigured } from './firebase';
 import { 
   collection, 
@@ -13,12 +13,56 @@ import {
   deleteDoc, 
   updateDoc,
   where,
-  limit
+  limit,
+  getDoc
 } from 'firebase/firestore';
 
 // Nama Koleksi di Database
 const COLL_STUDENTS = 'students';
+const COLL_TEACHERS = 'teachers';
 const COLL_ATTENDANCE = 'attendance';
+const COLL_CONFIG = 'config';
+const DOC_SCHOOL_CONFIG = 'school_settings';
+
+// --- CONFIG SERVICE ---
+
+export const getSchoolConfig = async (): Promise<SchoolConfig> => {
+  if (!isFirebaseConfigured) {
+    const stored = localStorage.getItem(STORAGE_KEYS.CONFIG);
+    return stored ? JSON.parse(stored) : INITIAL_CONFIG;
+  }
+
+  try {
+    const docRef = doc(db, COLL_CONFIG, DOC_SCHOOL_CONFIG);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const config = docSnap.data() as SchoolConfig;
+      localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
+      return config;
+    } else {
+      return INITIAL_CONFIG;
+    }
+  } catch (e) {
+    console.error("Error fetching config:", e);
+    const stored = localStorage.getItem(STORAGE_KEYS.CONFIG);
+    return stored ? JSON.parse(stored) : INITIAL_CONFIG;
+  }
+};
+
+export const saveSchoolConfig = async (config: SchoolConfig): Promise<boolean> => {
+  localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
+
+  if (!isFirebaseConfigured) return true;
+
+  try {
+    await setDoc(doc(db, COLL_CONFIG, DOC_SCHOOL_CONFIG), config);
+    return true;
+  } catch (error) {
+    console.error("Error saving config:", error);
+    return false;
+  }
+};
 
 // --- STUDENTS SERVICE ---
 
@@ -61,13 +105,12 @@ export const saveStudents = async (students: Student[]): Promise<boolean> => {
 
   try {
     const promises = students.map(student => {
-      // FIX: Ensure no undefined values are sent to Firestore
       const safeStudent = {
          id: student.id || '',
          name: student.name || '',
          className: student.className || 'Unknown',
          gender: student.gender || 'L',
-         parentPhone: student.parentPhone || null // Firestore prefers null over undefined
+         parentPhone: student.parentPhone || null
       };
       return setDoc(doc(db, COLL_STUDENTS, safeStudent.id), safeStudent);
     });
@@ -78,6 +121,75 @@ export const saveStudents = async (students: Student[]): Promise<boolean> => {
     return false;
   }
 };
+
+// --- TEACHERS SERVICE ---
+
+export const getTeachers = async (): Promise<Teacher[]> => {
+  if (!isFirebaseConfigured) {
+    const stored = localStorage.getItem(STORAGE_KEYS.TEACHERS);
+    return stored ? JSON.parse(stored) : INITIAL_TEACHERS;
+  }
+
+  try {
+    const querySnapshot = await getDocs(collection(db, COLL_TEACHERS));
+    const teachers: Teacher[] = [];
+    
+    querySnapshot.forEach((doc) => {
+      teachers.push(doc.data() as Teacher);
+    });
+
+    if (teachers.length === 0) {
+      return INITIAL_TEACHERS;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(teachers));
+    return teachers;
+  } catch (e) {
+    console.error("Error fetching teachers:", e);
+    const stored = localStorage.getItem(STORAGE_KEYS.TEACHERS);
+    return stored ? JSON.parse(stored) : INITIAL_TEACHERS;
+  }
+};
+
+export const saveTeachers = async (teachers: Teacher[]): Promise<boolean> => {
+  localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(teachers));
+
+  if (!isFirebaseConfigured) return true;
+
+  try {
+    // Note: This replaces all teachers logic isn't perfect for massive data, but okay for < 50 teachers
+    // First, for a clean sync we might want to delete old ones, but for now we just upsert.
+    const promises = teachers.map(teacher => {
+      return setDoc(doc(db, COLL_TEACHERS, teacher.id), teacher);
+    });
+    await Promise.all(promises);
+    return true;
+  } catch (error) {
+    console.error("Error saving teachers:", error);
+    return false;
+  }
+};
+
+export const deleteTeacher = async (id: string): Promise<boolean> => {
+  // Update local
+  const stored = localStorage.getItem(STORAGE_KEYS.TEACHERS);
+  if (stored) {
+    const teachers = JSON.parse(stored) as Teacher[];
+    const filtered = teachers.filter(t => t.id !== id);
+    localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(filtered));
+  }
+
+  if (!isFirebaseConfigured) return true;
+
+  try {
+    await deleteDoc(doc(db, COLL_TEACHERS, id));
+    return true;
+  } catch (e) {
+    console.error("Error deleting teacher:", e);
+    return false;
+  }
+};
+
 
 // --- ATTENDANCE SERVICE ---
 
@@ -168,7 +280,6 @@ export const addAttendanceRecordToSheet = async (
   // Buat ID sementara jika offline, atau biarkan Firestore generate nanti
   const offlineId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  // FIX: Force fallback values for optional/missing fields to avoid 'undefined' in Firestore
   const newRecord: AttendanceRecord = {
     id: offlineId, // Temporary ID
     studentId: student.id || 'N/A',
@@ -196,9 +307,6 @@ export const addAttendanceRecordToSheet = async (
     // Hapus ID sebelum kirim ke firestore agar digenerate otomatis
     const { id, ...recordData } = newRecord;
     
-    // Explicitly casting recordData and ensuring no undefined values
-    // Firestore addDoc throws error if any value is undefined.
-    // JSON.stringify will remove keys that are undefined.
     const safeRecordData = JSON.parse(JSON.stringify(recordData));
 
     const docRef = await addDoc(collection(db, COLL_ATTENDANCE), safeRecordData);

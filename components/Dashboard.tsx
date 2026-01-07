@@ -1,5 +1,6 @@
+
 import React, { useMemo, useState } from 'react';
-import { Student, AttendanceRecord } from '../types';
+import { Student, AttendanceRecord, SchoolConfig } from '../types';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
@@ -8,9 +9,10 @@ import { Users, CheckCircle2, XCircle, Droplets, Filter, BookOpen } from 'lucide
 interface DashboardProps {
   students: Student[];
   records: AttendanceRecord[];
+  config: SchoolConfig;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ students, records }) => {
+const Dashboard: React.FC<DashboardProps> = ({ students, records, config }) => {
   const [selectedClass, setSelectedClass] = useState('ALL');
 
   // --- Date Info ---
@@ -101,7 +103,7 @@ const Dashboard: React.FC<DashboardProps> = ({ students, records }) => {
         
         <div className="flex flex-col md:flex-row md:items-center gap-4 border-t border-white/5 pt-4">
            <div className="bg-slate-950/50 px-3 py-1.5 rounded-lg border border-cyan-500/20 text-cyan-400 text-xs font-bold uppercase tracking-wider">
-              Tahun Pelajaran 2025/2026
+              Tahun Pelajaran {config.academicYear} | Semester {config.semester}
            </div>
            <div className="bg-slate-950/50 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 text-xs font-mono flex items-center gap-2">
               <CalendarIcon />

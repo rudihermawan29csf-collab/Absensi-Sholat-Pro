@@ -1,15 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 // Fix: Removed incorrect import from 'lucide-center' which doesn't exist.
-import { Shield as ShieldIcon, Users as UsersIcon, QrCode as QrCodeIcon, Trophy as TrophyIcon, LogOut as LogOutIcon, User as UserIcon, Home as HomeIcon, Loader2 as LoaderIcon, RefreshCw as RefreshCwIcon, AlertTriangle, ClipboardCheck, UserCheck } from 'lucide-react';
+import { Shield as ShieldIcon, Users as UsersIcon, QrCode as QrCodeIcon, Trophy as TrophyIcon, LogOut as LogOutIcon, User as UserIcon, Home as HomeIcon, Loader2 as LoaderIcon, RefreshCw as RefreshCwIcon, AlertTriangle, ClipboardCheck, UserCheck, Briefcase, Settings } from 'lucide-react';
 import ScannerTab from './components/ScannerTab';
 import StudentList from './components/StudentList';
+import TeacherList from './components/TeacherList';
+import SettingsTab from './components/SettingsTab';
 import Reports from './components/Reports';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import { Student, AttendanceRecord, TabView, UserRole } from './types';
-import { getStudents, getAttendance } from './services/storageService';
-import { STORAGE_KEYS, INITIAL_STUDENTS } from './constants';
+import { Student, AttendanceRecord, TabView, UserRole, Teacher, SchoolConfig } from './types';
+import { getStudents, getAttendance, getTeachers, getSchoolConfig } from './services/storageService';
+import { STORAGE_KEYS, INITIAL_STUDENTS, INITIAL_TEACHERS, INITIAL_CONFIG } from './constants';
 import { isFirebaseConfigured } from './services/firebase';
 
 function App() {
@@ -20,32 +22,44 @@ function App() {
 
   const [activeTab, setActiveTab] = useState<TabView>('dashboard');
   const [students, setStudents] = useState<Student[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [schoolConfig, setSchoolConfig] = useState<SchoolConfig>(INITIAL_CONFIG);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Inisialisasi dari Local Storage (Sangat Cepat)
   useEffect(() => {
     const localStuds = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+    const localTeachers = localStorage.getItem(STORAGE_KEYS.TEACHERS);
     const localRecs = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
+    const localConfig = localStorage.getItem(STORAGE_KEYS.CONFIG);
     
-    // PERBAIKAN: Validasi data lokal. Jika array kosong, gunakan INITIAL_STUDENTS
+    // Validasi data lokal siswa
     if (localStuds) {
       try {
         const parsed = JSON.parse(localStuds);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setStudents(parsed);
-        } else {
-          // Fallback jika cache rusak/kosong
-          setStudents(INITIAL_STUDENTS);
-        }
-      } catch (e) {
-        setStudents(INITIAL_STUDENTS);
-      }
-    } else {
-      setStudents(INITIAL_STUDENTS);
-    }
+        if (Array.isArray(parsed) && parsed.length > 0) setStudents(parsed);
+        else setStudents(INITIAL_STUDENTS);
+      } catch (e) { setStudents(INITIAL_STUDENTS); }
+    } else { setStudents(INITIAL_STUDENTS); }
+
+    // Validasi data lokal guru
+    if (localTeachers) {
+      try {
+        const parsed = JSON.parse(localTeachers);
+        if (Array.isArray(parsed) && parsed.length > 0) setTeachers(parsed);
+        else setTeachers(INITIAL_TEACHERS);
+      } catch (e) { setTeachers(INITIAL_TEACHERS); }
+    } else { setTeachers(INITIAL_TEACHERS); }
 
     if (localRecs) setRecords(JSON.parse(localRecs));
+
+    // Validasi Config
+    if (localConfig) {
+      try {
+        setSchoolConfig(JSON.parse(localConfig));
+      } catch (e) { setSchoolConfig(INITIAL_CONFIG); }
+    }
 
     const sessionAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
     if (sessionAuth) {
@@ -71,17 +85,20 @@ function App() {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const [studentData, attendanceData] = await Promise.all([
+      const [studentData, teacherData, attendanceData, configData] = await Promise.all([
         getStudents(),
-        getAttendance()
+        getTeachers(),
+        getAttendance(),
+        getSchoolConfig()
       ]);
       
-      // Safety check agar tidak menimpa dengan data kosong jika server offline/error
-      if (studentData && studentData.length > 0) {
-        setStudents(studentData);
-      } else if (students.length === 0) {
-        setStudents(INITIAL_STUDENTS);
-      }
+      if (studentData && studentData.length > 0) setStudents(studentData);
+      else if (students.length === 0) setStudents(INITIAL_STUDENTS);
+
+      if (teacherData && teacherData.length > 0) setTeachers(teacherData);
+      else if (teachers.length === 0) setTeachers(INITIAL_TEACHERS);
+      
+      if (configData) setSchoolConfig(configData);
       
       setRecords(attendanceData);
     } catch (error) {
@@ -91,7 +108,6 @@ function App() {
     }
   };
 
-  // Fungsi sakti: Update state instan dari Local Storage
   const handleRecordUpdate = () => {
     const localRecs = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
     if (localRecs) {
@@ -120,7 +136,7 @@ function App() {
   };
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} students={students} />;
+    return <Login onLogin={handleLogin} students={students} teachers={teachers} />;
   }
 
   return (
@@ -173,28 +189,35 @@ function App() {
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 relative z-10">
         <div className="animate-fade-in">
-          {activeTab === 'dashboard' && userRole !== 'PARENT' && <Dashboard students={students} records={records} />}
+          {activeTab === 'dashboard' && userRole !== 'PARENT' && <Dashboard students={students} records={records} config={schoolConfig} />}
           
-          {/* PERUBAHAN: Hanya TEACHER yang bisa mengakses tab Absen (Manual) */}
+          {/* TAB GURU: Manual Absen */}
           {activeTab === 'scan' && userRole === 'TEACHER' && (
             <ScannerTab students={students} records={records} onRecordUpdate={handleRecordUpdate} currentUser={currentUser} userRole={userRole} />
           )}
           
+          {/* TAB ADMIN: Data Siswa */}
           {activeTab === 'students' && userRole === 'ADMIN' && <StudentList students={students} setStudents={setStudents} />}
+          
+          {/* TAB ADMIN: Data Guru */}
+          {activeTab === 'teachers' && userRole === 'ADMIN' && <TeacherList teachers={teachers} setTeachers={setTeachers} />}
+
+          {/* TAB ADMIN: Settings (NEW) */}
+          {activeTab === 'settings' && userRole === 'ADMIN' && <SettingsTab config={schoolConfig} setConfig={setSchoolConfig} />}
+          
           {activeTab === 'reports' && <Reports records={records} students={students} onRecordUpdate={handleRecordUpdate} viewOnlyStudent={parentStudentData} />}
         </div>
       </main>
 
       {userRole !== 'PARENT' && (
         <nav className="fixed bottom-0 left-0 right-0 z-40">
-          <div className="max-w-xl mx-auto flex justify-center items-end pb-4 gap-4 md:gap-8">
+          <div className="max-w-xl mx-auto flex justify-center items-end pb-4 gap-2 md:gap-6">
              <button onClick={() => setActiveTab('dashboard')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'dashboard' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
                 <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'dashboard' ? 'bg-slate-800 border-amber-400' : 'bg-slate-900 border-slate-700'}`}>
                   <HomeIcon size={22} className={`transform -rotate-45 ${activeTab === 'dashboard' ? 'text-amber-400' : 'text-slate-400'}`} />
                 </div>
              </button>
              
-             {/* PERUBAHAN: Tombol Absen Manual hanya muncul untuk TEACHER */}
              {userRole === 'TEACHER' && (
                 <button onClick={() => setActiveTab('scan')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'scan' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
                     <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'scan' ? 'bg-slate-800 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-slate-900 border-slate-700'}`}>
@@ -204,12 +227,25 @@ function App() {
              )}
 
              {userRole === 'ADMIN' && (
+               <>
                <button onClick={() => setActiveTab('students')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'students' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
                   <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'students' ? 'bg-slate-800 border-amber-400' : 'bg-slate-900 border-slate-700'}`}>
                     <UsersIcon size={22} className={`transform -rotate-45 ${activeTab === 'students' ? 'text-amber-400' : 'text-slate-400'}`} />
                   </div>
                </button>
+               <button onClick={() => setActiveTab('teachers')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'teachers' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
+                  <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'teachers' ? 'bg-slate-800 border-cyan-400' : 'bg-slate-900 border-slate-700'}`}>
+                    <Briefcase size={22} className={`transform -rotate-45 ${activeTab === 'teachers' ? 'text-cyan-400' : 'text-slate-400'}`} />
+                  </div>
+               </button>
+               <button onClick={() => setActiveTab('settings')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'settings' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
+                  <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'settings' ? 'bg-slate-800 border-pink-400' : 'bg-slate-900 border-slate-700'}`}>
+                    <Settings size={22} className={`transform -rotate-45 ${activeTab === 'settings' ? 'text-pink-400' : 'text-slate-400'}`} />
+                  </div>
+               </button>
+               </>
              )}
+             
              <button onClick={() => setActiveTab('reports')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'reports' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
                 <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'reports' ? 'bg-slate-800 border-amber-400' : 'bg-slate-900 border-slate-700'}`}>
                   <TrophyIcon size={22} className={`transform -rotate-45 ${activeTab === 'reports' ? 'text-amber-400' : 'text-slate-400'}`} />

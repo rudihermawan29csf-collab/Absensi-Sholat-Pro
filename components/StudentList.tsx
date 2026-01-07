@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Student } from '../types';
-import { UserPlus, Trash2, Users, QrCode, Save, Upload, Edit, X, Loader2, Phone, User as UserIcon } from 'lucide-react';
+import { UserPlus, Trash2, Users, QrCode, Save, Upload, Edit, X, Loader2, Phone, User as UserIcon, FileSpreadsheet } from 'lucide-react';
 import { saveStudents } from '../services/storageService';
 import CardGenerator from './CardGenerator';
 import * as XLSX from 'xlsx';
@@ -65,6 +65,17 @@ const StudentList: React.FC<StudentListProps> = ({ students, setStudents }) => {
       const updatedStudents = students.filter(s => s.id !== id);
       await performSync(updatedStudents);
     }
+  };
+
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      { NIS: '1001', 'Nama Lengkap': 'CONTOH SISWA 1', Kelas: 'IX A', Gender: 'L', 'No WA Ortu': '08123456789' },
+      { NIS: '1002', 'Nama Lengkap': 'CONTOH SISWA 2', Kelas: 'IX A', Gender: 'P', 'No WA Ortu': '08123456788' },
+    ];
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "Template_Siswa_SMPN3Pacet.xlsx");
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,6 +144,9 @@ const StudentList: React.FC<StudentListProps> = ({ students, setStudents }) => {
           
           <div className="flex flex-wrap gap-2 w-full xl:w-auto">
              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
+             <button onClick={handleDownloadTemplate} className="flex-1 sm:flex-none bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-lg text-xs font-bold hover:bg-emerald-900/60 transition-all flex items-center justify-center gap-2">
+                <FileSpreadsheet size={16} /> Template
+             </button>
              <button onClick={() => fileInputRef.current?.click()} className="flex-1 sm:flex-none bg-slate-800 text-blue-400 border border-blue-500/30 px-3 py-2 rounded-lg text-xs font-bold hover:bg-blue-900/30 transition-all flex items-center justify-center gap-2">
                 <Upload size={16} /> Import
              </button>
