@@ -60,9 +60,17 @@ export const saveStudents = async (students: Student[]): Promise<boolean> => {
   }
 
   try {
-    const promises = students.map(student => 
-      setDoc(doc(db, COLL_STUDENTS, student.id), student)
-    );
+    const promises = students.map(student => {
+      // FIX: Ensure no undefined values are sent to Firestore
+      const safeStudent = {
+         id: student.id || '',
+         name: student.name || '',
+         className: student.className || 'Unknown',
+         gender: student.gender || 'L',
+         parentPhone: student.parentPhone || null // Firestore prefers null over undefined
+      };
+      return setDoc(doc(db, COLL_STUDENTS, safeStudent.id), safeStudent);
+    });
     await Promise.all(promises);
     return true;
   } catch (error) {
@@ -160,15 +168,16 @@ export const addAttendanceRecordToSheet = async (
   // Buat ID sementara jika offline, atau biarkan Firestore generate nanti
   const offlineId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+  // FIX: Force fallback values for optional/missing fields to avoid 'undefined' in Firestore
   const newRecord: AttendanceRecord = {
     id: offlineId, // Temporary ID
-    studentId: student.id,
-    studentName: student.name,
-    className: student.className,
+    studentId: student.id || 'N/A',
+    studentName: student.name || 'Unknown',
+    className: student.className || 'Unknown',
     date: today,
     timestamp: Date.now(),
-    operatorName: operatorName,
-    status: status
+    operatorName: operatorName || 'System',
+    status: status || 'PRESENT'
   };
 
   // Update Local Storage SEGERA
@@ -178,7 +187,7 @@ export const addAttendanceRecordToSheet = async (
   if (!isFirebaseConfigured) {
     return { 
       success: true, 
-      message: `${student.name} berhasil ABSEN (Mode Offline).`,
+      message: `${newRecord.studentName} berhasil ABSEN (Mode Offline).`,
       record: newRecord 
     };
   }
@@ -186,16 +195,22 @@ export const addAttendanceRecordToSheet = async (
   try {
     // Hapus ID sebelum kirim ke firestore agar digenerate otomatis
     const { id, ...recordData } = newRecord;
-    const docRef = await addDoc(collection(db, COLL_ATTENDANCE), recordData);
+    
+    // Explicitly casting recordData and ensuring no undefined values
+    // Firestore addDoc throws error if any value is undefined.
+    // JSON.stringify will remove keys that are undefined.
+    const safeRecordData = JSON.parse(JSON.stringify(recordData));
+
+    const docRef = await addDoc(collection(db, COLL_ATTENDANCE), safeRecordData);
     
     // Perbarui ID di local storage dengan ID asli dari Firestore
-    const finalRecord = { ...recordData, id: docRef.id };
+    const finalRecord = { ...newRecord, id: docRef.id };
     const fixedRecords = updatedRecords.map(r => r.id === offlineId ? finalRecord : r);
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(fixedRecords));
 
     return { 
       success: true, 
-      message: `${student.name} berhasil ABSEN.`,
+      message: `${newRecord.studentName} berhasil ABSEN.`,
       record: finalRecord 
     };
   } catch (error) {

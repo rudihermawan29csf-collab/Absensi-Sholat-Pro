@@ -1,18 +1,20 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Scan, UserCheck, Search, QrCode, X, Sparkles, Zap, Camera, Keyboard, Send, Phone, Filter, CheckSquare, Square, Check, Droplets, Loader2 } from 'lucide-react';
+import { Scan, UserCheck, Search, QrCode, X, Sparkles, Zap, Camera, Keyboard, Send, Phone, Filter, CheckSquare, Square, Check, Droplets, Loader2, Trash2 } from 'lucide-react';
 import { QrReader } from 'react-qr-reader';
-import { Student, AttendanceRecord } from '../types';
-import { addAttendanceRecordToSheet } from '../services/storageService';
+import { Student, AttendanceRecord, UserRole } from '../types';
+import { addAttendanceRecordToSheet, deleteAttendanceRecord } from '../services/storageService';
 
 interface ScannerTabProps {
   students: Student[];
   records: AttendanceRecord[];
   onRecordUpdate: () => void;
   currentUser: string;
+  userRole: UserRole;
 }
 
-const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpdate, currentUser }) => {
+const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpdate, currentUser, userRole }) => {
+  // PERUBAHAN: Default mode 'scan' untuk semua pengguna (Guru)
   const [mode, setMode] = useState<'scan' | 'manual'>('scan');
   const [scanMethod, setScanMethod] = useState<'camera' | 'usb'>('camera');
   const [autoSendWA, setAutoSendWA] = useState(false);
@@ -41,26 +43,33 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
     return Array.from(classes).sort();
   }, [students]);
 
-  const attendedStudentIds = useMemo(() => {
+  // Map of studentId -> AttendanceRecord for today
+  const todayAttendanceMap = useMemo(() => {
       const now = new Date();
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const day = String(now.getDate()).padStart(2, '0');
       const todayStr = `${year}-${month}-${day}`;
-      const todayRecords = records.filter(r => r.date === todayStr);
-      return new Set(todayRecords.map(r => r.studentId));
+      
+      const map = new Map<string, AttendanceRecord>();
+      records.filter(r => r.date === todayStr).forEach(r => {
+        map.set(r.studentId, r);
+      });
+      return map;
   }, [records]);
 
   const filteredStudents = useMemo(() => {
     return students.filter(s => {
-      if (attendedStudentIds.has(s.id)) return false;
+      // PERBAIKAN: Jangan filter siswa yang sudah absen. Tampilkan agar bisa di-undo (dihapus).
+      // if (todayAttendanceMap.has(s.id)) return false; 
+      
       if (isHaidMode && s.gender !== 'P') return false;
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             s.id.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesClass = manualClassFilter === 'ALL' || s.className === manualClassFilter;
       return matchesSearch && matchesClass;
     });
-  }, [students, searchQuery, manualClassFilter, attendedStudentIds, isHaidMode]);
+  }, [students, searchQuery, manualClassFilter, todayAttendanceMap, isHaidMode]);
 
   const handleAttendance = async (student: Student) => {
     setIsProcessing(true);
@@ -82,6 +91,29 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
       }
     }
     setIsProcessing(false);
+  };
+
+  const handleManualClick = async (student: Student) => {
+    const existingRecord = todayAttendanceMap.get(student.id);
+
+    if (existingRecord) {
+        // HAPUS SCAN (UNDO)
+        if (confirm(`Batalkan absensi untuk ${student.name}?`)) {
+            setIsProcessing(true);
+            const success = await deleteAttendanceRecord(existingRecord.id);
+            if (success) {
+                onRecordUpdate();
+                setLastMessage({ text: 'Absensi dibatalkan', type: 'success' });
+            } else {
+                setLastMessage({ text: 'Gagal menghapus', type: 'error' });
+            }
+            setIsProcessing(false);
+            setTimeout(() => setLastMessage(null), 2000);
+        }
+    } else {
+        // ABSEN SISWA
+        handleAttendance(student);
+    }
   };
 
   const handleBulkAttendance = async () => {
@@ -158,13 +190,14 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
 
   return (
     <div className="space-y-8 pb-20">
+      {/* PERUBAHAN: Selalu tampilkan toggle mode SCANNER / MANUAL untuk semua user yang akses halaman ini */}
       <div className="flex bg-slate-800/50 p-1.5 rounded-full w-full max-w-md mx-auto border border-white/10 relative backdrop-blur-md">
         <button onClick={() => setMode('scan')} className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-full transition-all flex items-center justify-center gap-2 ${mode === 'scan' ? 'text-slate-900' : 'text-slate-400'}`}>
           {mode === 'scan' && <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full shadow-[0_0_15px_rgba(34,211,238,0.5)] -z-10"></div>}
           <QrCode size={18} /> SCANNER
         </button>
         <button onClick={() => setMode('manual')} className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-full transition-all flex items-center justify-center gap-2 ${mode === 'manual' ? 'text-slate-900' : 'text-slate-400'}`}>
-           {mode === 'manual' && <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.5)] -z-10"></div>}
+            {mode === 'manual' && <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full shadow-[0_0_15px_rgba(251,191,36,0.5)] -z-10"></div>}
           <UserCheck size={18} /> MANUAL
         </button>
       </div>
@@ -180,6 +213,7 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
         </div>
       )}
 
+      {/* MODE SCANNER */}
       {mode === 'scan' && (
         <div className="flex flex-col items-center justify-center space-y-6 py-4">
           <div className="flex flex-wrap justify-center gap-3 w-full max-w-lg">
@@ -251,22 +285,43 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
                 <ul className="space-y-2">
                     {filteredStudents.map((student) => {
                         const isSelected = selectedIds.has(student.id);
+                        const existingRecord = todayAttendanceMap.get(student.id);
+                        const isAttended = !!existingRecord;
+                        const isHaid = existingRecord?.status === 'HAID';
+
                         return (
-                            <li key={student.id} onClick={() => toggleSelection(student.id)} className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${isSelected ? (isHaidMode ? 'bg-pink-900/20 border-pink-500' : 'bg-amber-900/20 border-amber-500') : 'bg-slate-800/50 border-transparent'}`}>
+                            <li key={student.id} 
+                                onClick={() => handleManualClick(student)} 
+                                className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between group 
+                                    ${isAttended 
+                                        ? (isHaid ? 'bg-pink-900/40 border-pink-600' : 'bg-emerald-900/40 border-emerald-600') 
+                                        : 'bg-slate-800/50 border-transparent hover:bg-slate-800 hover:border-slate-600'
+                                    }`}
+                            >
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-6 h-6 rounded flex items-center justify-center border ${isSelected ? (isHaidMode ? 'bg-pink-500' : 'bg-amber-500') : 'bg-slate-900 border-slate-600'}`}>
-                                        {isSelected ? <Check size={16} strokeWidth={4} /> : null}
+                                    <div className={`w-8 h-8 rounded flex items-center justify-center border transition-all
+                                        ${isAttended 
+                                            ? (isHaid ? 'bg-pink-500 border-pink-400 text-white' : 'bg-emerald-500 border-emerald-400 text-white') 
+                                            : 'bg-slate-900 border-slate-700 text-transparent'
+                                        }`}>
+                                        {isAttended ? <Check size={20} strokeWidth={4} /> : null}
                                     </div>
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 ${student.gender === 'L' ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-pink-900/30 border-pink-500 text-pink-400'}`}>
                                         {student.gender || '?'}
                                     </div>
                                     <div>
-                                        <p className={`font-bold font-gaming tracking-wide ${isSelected ? (isHaidMode ? 'text-pink-400' : 'text-amber-400') : 'text-slate-200'}`}>{student.name}</p>
+                                        <p className={`font-bold font-gaming tracking-wide ${isAttended ? 'text-white' : (student.gender === 'P' ? 'text-pink-200' : 'text-slate-200')}`}>{student.name}</p>
                                         <div className="flex gap-2 text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-tighter">
                                             ID: {student.id} | {student.className}
+                                            {isAttended && <span className="text-white bg-slate-800 px-1 rounded ml-2">{isHaid ? 'SEDANG HAID' : 'HADIR'}</span>}
                                         </div>
                                     </div>
                                 </div>
+                                {isAttended && (
+                                    <div className="opacity-60 group-hover:opacity-100 bg-red-900/50 p-2 rounded-lg text-red-400 border border-red-500/30">
+                                        <Trash2 size={18} />
+                                    </div>
+                                )}
                             </li>
                         );
                     })}

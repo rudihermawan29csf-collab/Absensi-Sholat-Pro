@@ -9,7 +9,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import { Student, AttendanceRecord, TabView, UserRole } from './types';
 import { getStudents, getAttendance } from './services/storageService';
-import { STORAGE_KEYS } from './constants';
+import { STORAGE_KEYS, INITIAL_STUDENTS } from './constants';
 import { isFirebaseConfigured } from './services/firebase';
 
 function App() {
@@ -27,7 +27,24 @@ function App() {
   useEffect(() => {
     const localStuds = localStorage.getItem(STORAGE_KEYS.STUDENTS);
     const localRecs = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
-    if (localStuds) setStudents(JSON.parse(localStuds));
+    
+    // PERBAIKAN: Validasi data lokal. Jika array kosong, gunakan INITIAL_STUDENTS
+    if (localStuds) {
+      try {
+        const parsed = JSON.parse(localStuds);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setStudents(parsed);
+        } else {
+          // Fallback jika cache rusak/kosong
+          setStudents(INITIAL_STUDENTS);
+        }
+      } catch (e) {
+        setStudents(INITIAL_STUDENTS);
+      }
+    } else {
+      setStudents(INITIAL_STUDENTS);
+    }
+
     if (localRecs) setRecords(JSON.parse(localRecs));
 
     const sessionAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
@@ -58,7 +75,14 @@ function App() {
         getStudents(),
         getAttendance()
       ]);
-      setStudents(studentData);
+      
+      // Safety check agar tidak menimpa dengan data kosong jika server offline/error
+      if (studentData && studentData.length > 0) {
+        setStudents(studentData);
+      } else if (students.length === 0) {
+        setStudents(INITIAL_STUDENTS);
+      }
+      
       setRecords(attendanceData);
     } catch (error) {
       console.error("Sync error:", error);
@@ -150,11 +174,13 @@ function App() {
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 relative z-10">
         <div className="animate-fade-in">
           {activeTab === 'dashboard' && userRole !== 'PARENT' && <Dashboard students={students} records={records} />}
-          {activeTab === 'scan' && userRole !== 'PARENT' && (
-            <ScannerTab students={students} records={records} onRecordUpdate={handleRecordUpdate} currentUser={currentUser} />
+          
+          {/* PERUBAHAN: Hanya TEACHER yang bisa mengakses tab Scanner */}
+          {activeTab === 'scan' && userRole === 'TEACHER' && (
+            <ScannerTab students={students} records={records} onRecordUpdate={handleRecordUpdate} currentUser={currentUser} userRole={userRole} />
           )}
+          
           {activeTab === 'students' && userRole === 'ADMIN' && <StudentList students={students} setStudents={setStudents} />}
-          {/* Fix: Added missing onRecordUpdate prop to Reports component */}
           {activeTab === 'reports' && <Reports records={records} students={students} onRecordUpdate={handleRecordUpdate} viewOnlyStudent={parentStudentData} />}
         </div>
       </main>
@@ -167,11 +193,16 @@ function App() {
                   <HomeIcon size={22} className={`transform -rotate-45 ${activeTab === 'dashboard' ? 'text-amber-400' : 'text-slate-400'}`} />
                 </div>
              </button>
-             <button onClick={() => setActiveTab('scan')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'scan' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
-                <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'scan' ? 'bg-slate-800 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-slate-900 border-slate-700'}`}>
-                  <QrCodeIcon size={22} className={`transform -rotate-45 ${activeTab === 'scan' ? 'text-cyan-400' : 'text-slate-400'}`} />
-                </div>
-             </button>
+             
+             {/* PERUBAHAN: Tombol Scan hanya muncul untuk TEACHER */}
+             {userRole === 'TEACHER' && (
+                <button onClick={() => setActiveTab('scan')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'scan' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
+                    <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'scan' ? 'bg-slate-800 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'bg-slate-900 border-slate-700'}`}>
+                    <ShieldIcon size={22} className={`transform -rotate-45 ${activeTab === 'scan' ? 'text-cyan-400' : 'text-slate-400'}`} />
+                    </div>
+                </button>
+             )}
+
              {userRole === 'ADMIN' && (
                <button onClick={() => setActiveTab('students')} className={`group flex flex-col items-center transition-all w-16 ${activeTab === 'students' ? '-translate-y-2 scale-110' : 'opacity-70'}`}>
                   <div className={`w-12 h-12 flex items-center justify-center rounded-xl transform rotate-45 border-2 ${activeTab === 'students' ? 'bg-slate-800 border-amber-400' : 'bg-slate-900 border-slate-700'}`}>

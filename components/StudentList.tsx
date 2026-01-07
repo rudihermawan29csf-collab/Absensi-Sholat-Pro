@@ -34,7 +34,7 @@ const StudentList: React.FC<StudentListProps> = ({ students, setStudents }) => {
     if (!newStudent.name || !newStudent.id || isSaving) return;
 
     const updatedStudents = [...students, newStudent as Student];
-    updatedStudents.sort((a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+    updatedStudents.sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''));
     
     await performSync(updatedStudents);
     setIsAdding(false);
@@ -104,7 +104,7 @@ const StudentList: React.FC<StudentListProps> = ({ students, setStudents }) => {
               if (index >= 0) mergedStudents[index] = newS;
               else mergedStudents.push(newS);
             });
-            mergedStudents.sort((a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+            mergedStudents.sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''));
             await performSync(mergedStudents);
             alert(`Impor Sukses! ${newStudents.length} data disinkronkan ke Cloud.`);
         }

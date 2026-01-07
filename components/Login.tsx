@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { TEACHERS } from '../constants';
 import { Lock, User, KeyRound, ShieldCheck, ChevronRight, Briefcase, GraduationCap } from 'lucide-react';
@@ -30,7 +31,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, students }) => {
 
   const studentsInClass = useMemo(() => {
     if (!selectedClass) return [];
-    return students.filter(s => s.className === selectedClass).sort((a,b) => a.name.localeCompare(b.name));
+    return students.filter(s => s.className === selectedClass).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   }, [students, selectedClass]);
 
   const handleSubmit = (e: React.FormEvent) => {
