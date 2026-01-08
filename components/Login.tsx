@@ -58,12 +58,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, students, teachers }) => {
                   setLoading(false);
               }
           } 
-          // TEACHER CHECK - Default password for teachers (simplified)
+          // TEACHER CHECK
           else {
               if (password === 'guru123') {
                  onLogin(selectedStaff, 'TEACHER');
               } else {
-                 setError('Password salah! (Default: guru123)');
+                 // Perbaikan: Tidak lagi menampilkan password default di pesan error
+                 setError('Password salah! Silakan hubungi Administrator jika lupa.');
                  setLoading(false);
               }
           }

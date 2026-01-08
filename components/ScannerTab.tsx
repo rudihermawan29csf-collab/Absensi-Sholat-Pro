@@ -55,6 +55,11 @@ const ScannerTab: React.FC<ScannerTabProps> = ({ students, records, onRecordUpda
                             s.id.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesClass = manualClassFilter === 'ALL' || s.className === manualClassFilter;
       return matchesSearch && matchesClass;
+    }).sort((a, b) => {
+        // Sort by Class first, then by Name (A-Z)
+        const classComp = (a.className || '').localeCompare(b.className || '');
+        if (classComp !== 0) return classComp;
+        return a.name.localeCompare(b.name);
     });
   }, [students, searchQuery, manualClassFilter, todayAttendanceMap, isHaidMode, showAttended]);
 

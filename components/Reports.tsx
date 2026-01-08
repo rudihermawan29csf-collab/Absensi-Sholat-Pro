@@ -1,9 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AttendanceRecord, ReportPeriod, Student, Holiday } from '../types';
-import { Calendar, Crown, Medal, TrendingUp, CheckCircle2, List, FileText, Loader2, UserCircle, XCircle, Edit, Trash2, Droplets, CalendarOff } from 'lucide-react';
+import { Calendar, Crown, Medal, TrendingUp, CheckCircle2, List, FileText, Loader2, UserCircle, XCircle, Edit, Trash2, Droplets, CalendarOff, Search, X } from 'lucide-react';
 import { format, subDays, eachDayOfInterval, parseISO } from 'date-fns';
-import { id as idLocale } from 'date-fns/locale';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { deleteAttendanceRecord, updateAttendanceStatus } from '../services/storageService';
@@ -21,13 +20,22 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
+  // Filters
   const [dailyFilter, setDailyFilter] = useState<'ALL' | 'PRESENT' | 'ABSENT' | 'HAID'>('ALL');
   const [dailyClassFilter, setDailyClassFilter] = useState('ALL');
+  const [dailyDate, setDailyDate] = useState(format(new Date(), 'yyyy-MM-dd')); // State tanggal harian
+  
+  // Student Search Filter
+  const [studentSearchText, setStudentSearchText] = useState('');
+  const [studentFilter, setStudentFilter] = useState<string | null>(null); // Stores Student ID
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // Date Filters (Weekly/Matrix)
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 6), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedClass, setSelectedClass] = useState('ALL');
 
+  // Monthly Filters
   const [historyMonth, setHistoryMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [historyFilterClass, setHistoryFilterClass] = useState('ALL');
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<Student | null>(null);
@@ -35,6 +43,13 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
   useEffect(() => {
     if (viewOnlyStudent) setSelectedStudentDetail(viewOnlyStudent);
   }, [viewOnlyStudent]);
+
+  // Reset student filter when switching tabs
+  useEffect(() => {
+    setStudentSearchText('');
+    setStudentFilter(null);
+    setShowSuggestions(false);
+  }, [period]);
 
   const handleDelete = async (recordId: string) => {
     if (confirm('Hapus record ini selamanya?')) {
@@ -55,6 +70,27 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
       return Array.from(classes).sort();
   }, [students]);
 
+  // Filter Suggestions Logic
+  const searchSuggestions = useMemo(() => {
+      if (!studentSearchText) return [];
+      return students.filter(s => 
+          s.name.toLowerCase().includes(studentSearchText.toLowerCase()) || 
+          s.id.includes(studentSearchText)
+      ).slice(0, 5); // Limit 5 suggestions
+  }, [students, studentSearchText]);
+
+  const selectStudentFilter = (student: Student) => {
+      setStudentFilter(student.id);
+      setStudentSearchText(student.name);
+      setShowSuggestions(false);
+  };
+
+  const clearStudentFilter = () => {
+      setStudentFilter(null);
+      setStudentSearchText('');
+      setShowSuggestions(false);
+  };
+
   // Helper untuk Cek Hari Libur
   const getDayStatus = (dateStr: string) => {
       const date = parseISO(dateStr);
@@ -70,16 +106,13 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
   // --- DATA PROCESSING START ---
 
   const dailyStatusInfo = useMemo(() => {
-     const today = format(new Date(), 'yyyy-MM-dd'); // Default to today, or user selected
-     // Note: For daily report, we usually check against TODAY. But if we add a date picker later, use that.
-     // Currently daily report in this app is "TODAY".
-     return getDayStatus(today);
-  }, [holidays]);
+     return getDayStatus(dailyDate);
+  }, [holidays, dailyDate]);
 
   const dailyMasterList = useMemo(() => {
     if (!students) return [];
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const todayRecords = records.filter(r => r.date === today);
+    // Menggunakan dailyDate yang dipilih user
+    const todayRecords = records.filter(r => r.date === dailyDate);
     const targetStudents = viewOnlyStudent ? [viewOnlyStudent] : students;
 
     return targetStudents.map(student => {
@@ -95,16 +128,23 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             operator: record?.operatorName || '-'
         };
     }).sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''));
-  }, [records, students, viewOnlyStudent]);
+  }, [records, students, viewOnlyStudent, dailyDate]);
 
   const filteredDailyList = useMemo(() => {
     let list = dailyMasterList;
+    
+    // Apply Class Filter
     if (dailyClassFilter !== 'ALL' && !viewOnlyStudent) list = list.filter(s => s.className === dailyClassFilter);
+    
+    // Apply Student Search Filter
+    if (studentFilter && !viewOnlyStudent) list = list.filter(s => s.id === studentFilter);
+
+    // Apply Status Filter
     if (dailyFilter === 'ALL') return list;
     if (dailyFilter === 'PRESENT') return list.filter(s => s.statusRaw === 'PRESENT');
     if (dailyFilter === 'HAID') return list.filter(s => s.statusRaw === 'HAID');
     return list.filter(s => s.statusRaw === 'ABSENT');
-  }, [dailyMasterList, dailyFilter, dailyClassFilter, viewOnlyStudent]);
+  }, [dailyMasterList, dailyFilter, dailyClassFilter, viewOnlyStudent, studentFilter]);
 
   const weeklyMatrixData = useMemo(() => {
     if (!students || students.length === 0) return { daysInRange: [], matrix: [] };
@@ -114,7 +154,11 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
         const end = parseISO(endDate);
         let daysInRange = eachDayOfInterval({ start, end });
         let targetStudents = viewOnlyStudent ? [viewOnlyStudent] : students;
-        if (!viewOnlyStudent && selectedClass !== 'ALL') targetStudents = targetStudents.filter(s => s.className === selectedClass);
+        
+        if (!viewOnlyStudent) {
+            if (selectedClass !== 'ALL') targetStudents = targetStudents.filter(s => s.className === selectedClass);
+            if (studentFilter) targetStudents = targetStudents.filter(s => s.id === studentFilter);
+        }
 
         return {
             daysInRange,
@@ -146,12 +190,16 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
         console.error("Date parsing error", e);
         return { daysInRange: [], matrix: [] };
     }
-  }, [records, students, startDate, endDate, selectedClass, viewOnlyStudent, holidays]);
+  }, [records, students, startDate, endDate, selectedClass, viewOnlyStudent, holidays, studentFilter]);
 
   const monthlyStats = useMemo(() => {
     if (!students || students.length === 0) return [];
     let targetStudents = viewOnlyStudent ? [viewOnlyStudent] : students;
-    if (!viewOnlyStudent && historyFilterClass !== 'ALL') targetStudents = targetStudents.filter(s => s.className === historyFilterClass);
+    
+    if (!viewOnlyStudent) {
+        if (historyFilterClass !== 'ALL') targetStudents = targetStudents.filter(s => s.className === historyFilterClass);
+        if (studentFilter) targetStudents = targetStudents.filter(s => s.id === studentFilter);
+    }
 
     return targetStudents.map(student => {
         const monthRecords = records.filter(r => r.studentId === student.id && r.date.startsWith(historyMonth));
@@ -159,20 +207,26 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
         const haidCount = monthRecords.filter(r => r.status === 'HAID').length;
         return { ...student, presentCount, haidCount }; 
     }).sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''));
-  }, [records, students, historyMonth, historyFilterClass, viewOnlyStudent]);
+  }, [records, students, historyMonth, historyFilterClass, viewOnlyStudent, studentFilter]);
 
   const semesterData = useMemo(() => {
-    const counts: Record<string, { name: string, count: number, className: string }> = {};
+    const counts: Record<string, { id: string, name: string, count: number, className: string }> = {};
     records.forEach(r => {
       if (!counts[r.studentId]) {
-        counts[r.studentId] = { name: r.studentName, count: 0, className: r.className };
+        counts[r.studentId] = { id: r.studentId, name: r.studentName, count: 0, className: r.className };
       }
       if (r.status === 'PRESENT' || r.status === 'HAID') {
         counts[r.studentId].count++;
       }
     });
-    return Object.values(counts).sort((a, b) => b.count - a.count);
-  }, [records]);
+    
+    let result = Object.values(counts);
+    if (studentFilter) {
+        result = result.filter(item => item.id === studentFilter);
+    }
+    
+    return result.sort((a, b) => b.count - a.count);
+  }, [records, studentFilter]);
 
   // --- EXPORT FUNCTION ---
 
@@ -193,6 +247,55 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // --- COMPONENT: STUDENT SEARCH ---
+  const StudentSearchFilter = () => {
+      if (viewOnlyStudent) return null;
+
+      return (
+          <div className="relative group min-w-[200px] z-20">
+              <div className="relative">
+                  <input 
+                      type="text" 
+                      placeholder="Cari Siswa..." 
+                      value={studentSearchText}
+                      onChange={(e) => {
+                          setStudentSearchText(e.target.value);
+                          if (!e.target.value) setStudentFilter(null);
+                          setShowSuggestions(true);
+                      }}
+                      onFocus={() => setShowSuggestions(true)}
+                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg p-1.5 pl-8 text-xs outline-none focus:border-cyan-500"
+                  />
+                  <Search size={14} className="absolute left-2 top-2 text-slate-500" />
+                  {studentFilter && (
+                      <button 
+                          onClick={clearStudentFilter} 
+                          className="absolute right-2 top-2 text-slate-500 hover:text-red-400"
+                      >
+                          <X size={14} />
+                      </button>
+                  )}
+              </div>
+              
+              {/* Suggestions Dropdown */}
+              {showSuggestions && studentSearchText && !studentFilter && searchSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+                      {searchSuggestions.map(s => (
+                          <div 
+                              key={s.id} 
+                              onClick={() => selectStudentFilter(s)}
+                              className="p-2 hover:bg-slate-800 cursor-pointer text-xs border-b border-slate-800/50 last:border-0"
+                          >
+                              <div className="font-bold text-slate-200">{s.name}</div>
+                              <div className="text-[10px] text-slate-500">{s.className}</div>
+                          </div>
+                      ))}
+                  </div>
+              )}
+          </div>
+      );
   };
 
   // --- RENDER ---
@@ -234,8 +337,9 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                     {period === ReportPeriod.MONTHLY && <><Calendar className="text-cyan-400" /> REKAP BULANAN</>}
                     {period === ReportPeriod.SEMESTER && <><Crown className="text-amber-500" /> LEADERBOARD</>}
                 </h3>
-                <div className="flex gap-2 w-full md:w-auto no-print">
-                    <button onClick={handleDownloadPDF} disabled={isExporting} className="flex-1 md:flex-none bg-red-900/40 text-red-400 border border-red-500/30 hover:bg-red-900/60 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto no-print items-end md:items-center">
+                    {/* Add Search Here for Semester/Monthly/Weekly if needed, or inside tabs */}
+                    <button onClick={handleDownloadPDF} disabled={isExporting} className="bg-red-900/40 text-red-400 border border-red-500/30 hover:bg-red-900/60 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
                         {isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />} PDF
                     </button>
                 </div>
@@ -252,13 +356,23 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                         </div>
                     )}
 
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 px-2">
-                        <div className="flex gap-3 text-[11px] md:text-xs text-slate-400">
+                    <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 px-2">
+                        <div className="flex gap-3 text-[11px] md:text-xs text-slate-400 order-2 xl:order-1">
                            <span>Total: <b className="text-white">{dailyMasterList.length}</b></span>
                            <span>Hadir: <b className="text-green-400">{dailyMasterList.filter(s=>s.isPresent && !s.isHaid).length}</b></span>
                            <span>Haid: <b className="text-pink-400">{dailyMasterList.filter(s=>s.isHaid).length}</b></span>
                         </div>
-                        <div className="flex flex-wrap gap-2 items-center justify-end w-full md:w-auto">
+                        <div className="flex flex-wrap gap-2 items-center justify-end w-full xl:w-auto order-1 xl:order-2">
+                            {/* NEW: Date Picker for Daily Report */}
+                            <input 
+                                type="date" 
+                                value={dailyDate} 
+                                onChange={(e) => setDailyDate(e.target.value)} 
+                                className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-[10px] p-2 uppercase outline-none focus:border-cyan-500"
+                            />
+
+                            <StudentSearchFilter />
+                            
                             {!viewOnlyStudent && (
                                 <select value={dailyClassFilter} onChange={(e) => setDailyClassFilter(e.target.value)} className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-[10px] p-2 uppercase outline-none">
                                     <option value="ALL">SEMUA KELAS</option>
@@ -328,6 +442,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             {period === ReportPeriod.WEEKLY && (
                 <div className="space-y-4">
                     <div className="flex flex-col md:flex-row gap-4 items-end no-print">
+                        <StudentSearchFilter />
                         <div className="flex flex-col gap-1">
                             <label className="text-[10px] text-slate-500 uppercase font-bold">Dari</label>
                             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none" />
@@ -399,6 +514,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                 <div className="space-y-4">
                     {!selectedStudentDetail && (
                         <div className="flex gap-4 items-end no-print">
+                            <StudentSearchFilter />
                             <input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none" />
                             <select value={historyFilterClass} onChange={e => setHistoryFilterClass(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none">
                                 <option value="ALL">SEMUA KELAS</option>
@@ -436,34 +552,39 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             )}
 
             {period === ReportPeriod.SEMESTER && (
-                <div className="overflow-hidden border border-slate-800 rounded-lg">
-                    <table className="w-full text-left">
-                        <thead className="bg-slate-950">
-                            <tr>
-                                <th className="p-3 text-[10px] font-bold text-slate-500 uppercase text-center">Rank</th>
-                                <th className="p-3 text-[10px] font-bold text-slate-500 uppercase">Hero Name</th>
-                                <th className="p-3 text-[10px] font-bold text-slate-500 uppercase text-right">Kehadiran (S+H)</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800">
-                            {semesterData.length === 0 ? (
-                                <tr><td colSpan={3} className="p-4 text-center text-slate-500">Belum ada data absensi.</td></tr>
-                            ) : (
-                                semesterData.map((s, idx) => (
-                                    <tr key={idx} className={`hover:bg-slate-800/50 transition-colors ${idx < 3 ? 'bg-amber-500/5' : ''}`}>
-                                        <td className="p-3 text-center">
-                                            {idx === 0 ? <Medal size={20} className="text-yellow-400 mx-auto" /> : idx === 1 ? <Medal size={20} className="text-slate-300 mx-auto" /> : idx === 2 ? <Medal size={20} className="text-amber-700 mx-auto" /> : <span className="text-slate-500 font-bold">#{idx+1}</span>}
-                                        </td>
-                                        <td className="p-3">
-                                            <div className="text-sm font-bold text-slate-200">{s.name}</div>
-                                            <div className="text-[10px] text-slate-500">{s.className}</div>
-                                        </td>
-                                        <td className="p-3 text-sm font-bold text-cyan-400 text-right font-mono">{s.count}</td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                <div className="space-y-4">
+                     <div className="no-print">
+                        <StudentSearchFilter />
+                     </div>
+                     <div className="overflow-hidden border border-slate-800 rounded-lg">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-950">
+                                <tr>
+                                    <th className="p-3 text-[10px] font-bold text-slate-500 uppercase text-center">Rank</th>
+                                    <th className="p-3 text-[10px] font-bold text-slate-500 uppercase">Hero Name</th>
+                                    <th className="p-3 text-[10px] font-bold text-slate-500 uppercase text-right">Kehadiran (S+H)</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {semesterData.length === 0 ? (
+                                    <tr><td colSpan={3} className="p-4 text-center text-slate-500">Belum ada data absensi.</td></tr>
+                                ) : (
+                                    semesterData.map((s, idx) => (
+                                        <tr key={idx} className={`hover:bg-slate-800/50 transition-colors ${idx < 3 ? 'bg-amber-500/5' : ''}`}>
+                                            <td className="p-3 text-center">
+                                                {idx === 0 ? <Medal size={20} className="text-yellow-400 mx-auto" /> : idx === 1 ? <Medal size={20} className="text-slate-300 mx-auto" /> : idx === 2 ? <Medal size={20} className="text-amber-700 mx-auto" /> : <span className="text-slate-500 font-bold">#{idx+1}</span>}
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="text-sm font-bold text-slate-200">{s.name}</div>
+                                                <div className="text-[10px] text-slate-500">{s.className}</div>
+                                            </td>
+                                            <td className="p-3 text-sm font-bold text-cyan-400 text-right font-mono">{s.count}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
         </div>
