@@ -274,56 +274,56 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
     }
   };
 
-  // --- COMPONENT: STUDENT SEARCH ---
-  const StudentSearchFilter = () => {
-      if (viewOnlyStudent) return null;
+  // --- RENDER HELPERS ---
 
-      return (
-          <div className="relative group min-w-[200px] z-20">
-              <div className="relative">
-                  <input 
-                      type="text" 
-                      placeholder="Cari Siswa..." 
-                      value={studentSearchText}
-                      onChange={(e) => {
-                          setStudentSearchText(e.target.value);
-                          if (!e.target.value) setStudentFilter(null);
-                          setShowSuggestions(true);
-                      }}
-                      onFocus={() => setShowSuggestions(true)}
-                      className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg p-1.5 pl-8 text-xs outline-none focus:border-cyan-500"
-                  />
-                  <Search size={14} className="absolute left-2 top-2 text-slate-500" />
-                  {studentFilter && (
-                      <button 
-                          onClick={clearStudentFilter} 
-                          className="absolute right-2 top-2 text-slate-500 hover:text-red-400"
-                      >
-                          <X size={14} />
-                      </button>
-                  )}
-              </div>
-              
-              {/* Suggestions Dropdown */}
-              {showSuggestions && studentSearchText && !studentFilter && searchSuggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
-                      {searchSuggestions.map(s => (
-                          <div 
-                              key={s.id} 
-                              onClick={() => selectStudentFilter(s)}
-                              className="p-2 hover:bg-slate-800 cursor-pointer text-xs border-b border-slate-800/50 last:border-0"
-                          >
-                              <div className="font-bold text-slate-200">{s.name}</div>
-                              <div className="text-[10px] text-slate-500">{s.className}</div>
-                          </div>
-                      ))}
-                  </div>
-              )}
-          </div>
-      );
+  const renderStudentSearchInput = () => {
+    if (viewOnlyStudent) return null;
+
+    return (
+        <div className="relative group min-w-[200px] z-20">
+            <div className="relative">
+                <input 
+                    type="text" 
+                    placeholder="Cari Siswa..." 
+                    value={studentSearchText}
+                    onChange={(e) => {
+                        setStudentSearchText(e.target.value);
+                        if (!e.target.value) setStudentFilter(null);
+                        setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg p-1.5 pl-8 text-xs outline-none focus:border-cyan-500"
+                />
+                <Search size={14} className="absolute left-2 top-2 text-slate-500" />
+                {studentFilter && (
+                    <button 
+                        onClick={clearStudentFilter} 
+                        className="absolute right-2 top-2 text-slate-500 hover:text-red-400"
+                    >
+                        <X size={14} />
+                    </button>
+                )}
+            </div>
+            
+            {/* Suggestions Dropdown */}
+            {showSuggestions && studentSearchText && !studentFilter && searchSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+                    {searchSuggestions.map(s => (
+                        <div 
+                            key={s.id} 
+                            onClick={() => selectStudentFilter(s)}
+                            className="p-2 hover:bg-slate-800 cursor-pointer text-xs border-b border-slate-800/50 last:border-0"
+                        >
+                            <div className="font-bold text-slate-200">{s.name}</div>
+                            <div className="text-[10px] text-slate-500">{s.className}</div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
   };
 
-  // --- COMPONENT: STATUS FILTER BUTTONS (Shared for Weekly/Monthly) ---
   const StatusFilterButtons = () => (
       <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
         {[
@@ -420,7 +420,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                                 className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-[10px] p-2 uppercase outline-none focus:border-cyan-500"
                             />
 
-                            <StudentSearchFilter />
+                            {renderStudentSearchInput()}
                             
                             {!viewOnlyStudent && (
                                 <select value={dailyClassFilter} onChange={(e) => setDailyClassFilter(e.target.value)} className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-[10px] p-2 uppercase outline-none">
@@ -491,7 +491,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             {period === ReportPeriod.WEEKLY && (
                 <div className="space-y-4">
                     <div className="flex flex-col md:flex-row gap-4 items-end no-print flex-wrap">
-                        <StudentSearchFilter />
+                        {renderStudentSearchInput()}
                         <div className="flex flex-col gap-1">
                             <label className="text-[10px] text-slate-500 uppercase font-bold">Dari</label>
                             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none" />
@@ -564,7 +564,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                 <div className="space-y-4">
                     {!selectedStudentDetail && (
                         <div className="flex gap-4 items-end no-print flex-wrap">
-                            <StudentSearchFilter />
+                            {renderStudentSearchInput()}
                             <input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none" />
                             <select value={historyFilterClass} onChange={e => setHistoryFilterClass(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none">
                                 <option value="ALL">SEMUA KELAS</option>
@@ -609,7 +609,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             {period === ReportPeriod.SEMESTER && (
                 <div className="space-y-4">
                      <div className="no-print">
-                        <StudentSearchFilter />
+                        {renderStudentSearchInput()}
                      </div>
                      <div className="overflow-hidden border border-slate-800 rounded-lg">
                         <table className="w-full text-left">
