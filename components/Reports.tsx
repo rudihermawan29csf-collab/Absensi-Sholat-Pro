@@ -25,6 +25,9 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
   const [dailyClassFilter, setDailyClassFilter] = useState('ALL');
   const [dailyDate, setDailyDate] = useState(format(new Date(), 'yyyy-MM-dd')); // State tanggal harian
   
+  // NEW: Filter for Weekly & Monthly
+  const [periodStatusFilter, setPeriodStatusFilter] = useState<'ALL' | 'PRESENT' | 'HAID' | 'ABSENT'>('ALL');
+
   // Student Search Filter
   const [studentSearchText, setStudentSearchText] = useState('');
   const [studentFilter, setStudentFilter] = useState<string | null>(null); // Stores Student ID
@@ -49,10 +52,11 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
     setStudentSearchText('');
     setStudentFilter(null);
     setShowSuggestions(false);
+    setPeriodStatusFilter('ALL'); // Reset period filter
   }, [period]);
 
-  const handleDelete = async (recordId: string) => {
-    if (confirm('Hapus record ini selamanya?')) {
+  const handleDelete = async (recordId: string, studentName: string) => {
+    if (window.confirm(`Hapus data absensi untuk ${studentName}? Data ini akan dihapus permanen.`)) {
       await deleteAttendanceRecord(recordId);
       onRecordUpdate();
     }
@@ -160,37 +164,49 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             if (studentFilter) targetStudents = targetStudents.filter(s => s.id === studentFilter);
         }
 
-        return {
-            daysInRange,
-            matrix: targetStudents.map(student => {
-                let presentCount = 0;
-                let haidCount = 0;
-                const attendanceMap = daysInRange.map(day => {
-                    const dateStr = format(day, 'yyyy-MM-dd');
-                    const dayStatus = getDayStatus(dateStr);
+        const matrix = targetStudents.map(student => {
+            let presentCount = 0;
+            let haidCount = 0;
+            const attendanceMap = daysInRange.map(day => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const dayStatus = getDayStatus(dateStr);
 
-                    const record = records.find(r => r.studentId === student.id && r.date === dateStr);
-                    if (record) {
-                        if (record.status === 'HAID') haidCount++;
-                        else presentCount++;
-                    }
-                    return { 
-                        date: dateStr, 
-                        isPresent: !!record, 
-                        isHaid: record?.status === 'HAID', 
-                        recordId: record?.id,
-                        isHoliday: dayStatus.isHoliday,
-                        holidayReason: dayStatus.holidayReason
-                    };
-                });
-                return { ...student, attendanceMap, presentCount, haidCount };
-            }).sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''))
-        };
+                const record = records.find(r => r.studentId === student.id && r.date === dateStr);
+                if (record) {
+                    if (record.status === 'HAID') haidCount++;
+                    else presentCount++;
+                }
+                return { 
+                    date: dateStr, 
+                    isPresent: !!record, 
+                    isHaid: record?.status === 'HAID', 
+                    recordId: record?.id,
+                    isHoliday: dayStatus.isHoliday,
+                    holidayReason: dayStatus.holidayReason
+                };
+            });
+            return { ...student, attendanceMap, presentCount, haidCount };
+        }).sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''));
+
+        // Apply Status Filter for Weekly Matrix
+        const filteredMatrix = matrix.filter(s => {
+             if (periodStatusFilter === 'ALL') return true;
+             if (periodStatusFilter === 'PRESENT') return s.presentCount > 0;
+             if (periodStatusFilter === 'HAID') return s.haidCount > 0;
+             if (periodStatusFilter === 'ABSENT') {
+                 // Absent logic: Has at least one day that is NOT holiday and NOT present
+                 return s.attendanceMap.some(d => !d.isHoliday && !d.isPresent);
+             }
+             return true;
+        });
+
+        return { daysInRange, matrix: filteredMatrix };
+
     } catch (e) {
         console.error("Date parsing error", e);
         return { daysInRange: [], matrix: [] };
     }
-  }, [records, students, startDate, endDate, selectedClass, viewOnlyStudent, holidays, studentFilter]);
+  }, [records, students, startDate, endDate, selectedClass, viewOnlyStudent, holidays, studentFilter, periodStatusFilter]);
 
   const monthlyStats = useMemo(() => {
     if (!students || students.length === 0) return [];
@@ -201,13 +217,22 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
         if (studentFilter) targetStudents = targetStudents.filter(s => s.id === studentFilter);
     }
 
-    return targetStudents.map(student => {
+    const stats = targetStudents.map(student => {
         const monthRecords = records.filter(r => r.studentId === student.id && r.date.startsWith(historyMonth));
         const presentCount = monthRecords.filter(r => r.status === 'PRESENT').length;
         const haidCount = monthRecords.filter(r => r.status === 'HAID').length;
         return { ...student, presentCount, haidCount }; 
     }).sort((a, b) => (a.className || '').localeCompare(b.className || '') || (a.name || '').localeCompare(b.name || ''));
-  }, [records, students, historyMonth, historyFilterClass, viewOnlyStudent, studentFilter]);
+
+    // Apply Status Filter for Monthly
+    return stats.filter(s => {
+        if (periodStatusFilter === 'ALL') return true;
+        if (periodStatusFilter === 'PRESENT') return s.presentCount > 0;
+        if (periodStatusFilter === 'HAID') return s.haidCount > 0;
+        if (periodStatusFilter === 'ABSENT') return (s.presentCount + s.haidCount) === 0; // Totally absent this month
+        return true;
+    });
+  }, [records, students, historyMonth, historyFilterClass, viewOnlyStudent, studentFilter, periodStatusFilter]);
 
   const semesterData = useMemo(() => {
     const counts: Record<string, { id: string, name: string, count: number, className: string }> = {};
@@ -297,6 +322,30 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
           </div>
       );
   };
+
+  // --- COMPONENT: STATUS FILTER BUTTONS (Shared for Weekly/Monthly) ---
+  const StatusFilterButtons = () => (
+      <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+        {[
+            { id: 'ALL', label: 'SEMUA' },
+            { id: 'PRESENT', label: 'HADIR' },
+            { id: 'HAID', label: 'HAID' },
+            { id: 'ABSENT', label: 'ALPHA' }
+        ].map(f => (
+            <button 
+                key={f.id} 
+                onClick={() => setPeriodStatusFilter(f.id as any)} 
+                className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${
+                    periodStatusFilter === f.id 
+                    ? (f.id === 'PRESENT' ? 'bg-green-600 text-white' : f.id === 'HAID' ? 'bg-pink-600 text-white' : f.id === 'ABSENT' ? 'bg-red-600 text-white' : 'bg-slate-700 text-white')
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+            >
+                {f.label}
+            </button>
+        ))}
+      </div>
+  );
 
   // --- RENDER ---
   
@@ -418,12 +467,12 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                                             <td className="p-3 text-center text-slate-400">{student.time}</td>
                                             {!viewOnlyStudent && (
                                                 <td className="p-3 text-center">
-                                                    {student.isPresent && (
+                                                    {student.isPresent && student.recordId && (
                                                         <div className="flex justify-center gap-2">
                                                             <button onClick={() => handleToggleStatus(student.recordId!, student.statusRaw)} className="p-1.5 text-amber-500 hover:bg-amber-500/10 rounded transition-all" title="Ubah Status (Hadir/Haid)">
                                                                 <Edit size={14} />
                                                             </button>
-                                                            <button onClick={() => handleDelete(student.recordId!)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-all" title="Hapus Absensi">
+                                                            <button onClick={() => handleDelete(student.recordId!, student.name)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-all" title="Hapus Absensi">
                                                                 <Trash2 size={14} />
                                                             </button>
                                                         </div>
@@ -441,7 +490,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
 
             {period === ReportPeriod.WEEKLY && (
                 <div className="space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4 items-end no-print">
+                    <div className="flex flex-col md:flex-row gap-4 items-end no-print flex-wrap">
                         <StudentSearchFilter />
                         <div className="flex flex-col gap-1">
                             <label className="text-[10px] text-slate-500 uppercase font-bold">Dari</label>
@@ -455,6 +504,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                             <option value="ALL">SEMUA KELAS</option>
                             {classList.map(cls => <option key={cls} value={cls}>{cls}</option>)}
                         </select>
+                        <StatusFilterButtons />
                     </div>
                     <div className="overflow-x-auto rounded-xl border border-slate-700">
                         <table className="w-full text-left">
@@ -491,7 +541,7 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                                                                 <div className="group relative flex flex-col items-center">
                                                                     <span className={d.isHaid ? 'text-pink-500' : 'text-green-500'}>{d.isHaid ? 'H' : 'V'}</span>
                                                                     {!viewOnlyStudent && (
-                                                                        <button onClick={() => handleDelete(d.recordId!)} className="absolute -top-4 opacity-0 group-hover:opacity-100 bg-red-600 rounded p-1 text-[8px] z-50">DEL</button>
+                                                                        <button onClick={() => handleDelete(d.recordId!, s.name)} className="absolute -top-4 opacity-0 group-hover:opacity-100 bg-red-600 rounded p-1 text-[8px] z-50">DEL</button>
                                                                     )}
                                                                 </div>
                                                             ) : '-'
@@ -513,13 +563,14 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
             {period === ReportPeriod.MONTHLY && (
                 <div className="space-y-4">
                     {!selectedStudentDetail && (
-                        <div className="flex gap-4 items-end no-print">
+                        <div className="flex gap-4 items-end no-print flex-wrap">
                             <StudentSearchFilter />
                             <input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none" />
                             <select value={historyFilterClass} onChange={e => setHistoryFilterClass(e.target.value)} className="bg-slate-900 border border-slate-700 text-slate-200 rounded p-1.5 text-xs outline-none">
                                 <option value="ALL">SEMUA KELAS</option>
                                 {classList.map(cls => <option key={cls} value={cls}>{cls}</option>)}
                             </select>
+                            <StatusFilterButtons />
                         </div>
                     )}
                     <div className="overflow-x-auto rounded-xl border border-slate-700">
@@ -534,17 +585,21 @@ const Reports: React.FC<ReportsProps> = ({ records = [], students = [], onRecord
                                 </tr>
                             </thead>
                             <tbody className="text-xs font-mono">
-                                {monthlyStats.map((s, idx) => (
-                                    <tr key={idx} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                                        <td className="p-3 opacity-60">{idx + 1}</td>
-                                        <td className="p-3 text-center text-slate-500">{s.id}</td>
-                                        <td className="p-3">
-                                            <button onClick={() => setSelectedStudentDetail(s as Student)} className="text-left hover:text-amber-400 transition-all">{s.name}</button>
-                                        </td>
-                                        <td className="p-3 text-center font-bold text-green-400">{s.presentCount}</td>
-                                        <td className="p-3 text-center font-bold text-pink-400">{s.haidCount}</td>
-                                    </tr>
-                                ))}
+                                {monthlyStats.length === 0 ? (
+                                    <tr><td colSpan={5} className="p-4 text-center italic text-slate-500">Data tidak ditemukan.</td></tr>
+                                ) : (
+                                    monthlyStats.map((s, idx) => (
+                                        <tr key={idx} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                                            <td className="p-3 opacity-60">{idx + 1}</td>
+                                            <td className="p-3 text-center text-slate-500">{s.id}</td>
+                                            <td className="p-3">
+                                                <button onClick={() => setSelectedStudentDetail(s as Student)} className="text-left hover:text-amber-400 transition-all">{s.name}</button>
+                                            </td>
+                                            <td className="p-3 text-center font-bold text-green-400">{s.presentCount}</td>
+                                            <td className="p-3 text-center font-bold text-pink-400">{s.haidCount}</td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
